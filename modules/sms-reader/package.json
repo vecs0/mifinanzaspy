@@ -1,0 +1,11 @@
+{
+  "name": "sms-reader",
+  "version": "1.0.0",
+  "description": "Módulo nativo Android para lectura de SMS bancarios",
+  "main": "src/index",
+  "types": "src/index",
+  "expo": {
+    "name": "SmsReader",
+    "platforms": ["android"]
+  }
+}

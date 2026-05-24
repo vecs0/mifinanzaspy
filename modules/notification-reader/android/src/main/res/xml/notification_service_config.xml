@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuración del NotificationListenerService.
+  En el AndroidManifest se referencia como:
+    android:resource="@xml/notification_service_config"
+  NOTA: El filtro de paquetes se gestiona en tiempo de ejecución desde JS,
+  no aquí, para que el usuario pueda habilitar/deshabilitar bancos dinámicamente.
+-->
+<notification-listener />

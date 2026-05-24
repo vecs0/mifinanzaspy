@@ -1,0 +1,11 @@
+{
+  "name": "notification-reader",
+  "version": "1.0.0",
+  "description": "NotificationListenerService para apps bancarias paraguayas",
+  "main": "src/index",
+  "types": "src/index",
+  "expo": {
+    "name": "NotificationReader",
+    "platforms": ["android"]
+  }
+}

@@ -1,0 +1,7 @@
+/* global.css — Punto de entrada de Tailwind / NativeWind v4
+   Se importa UNA SOLA VEZ en app/_layout.tsx.
+   NativeWind v4 usa estas directivas para generar los estilos en tiempo de compilación. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
