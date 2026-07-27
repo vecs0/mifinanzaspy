@@ -20,6 +20,7 @@ app.json.local
 .vscode/
 .idea/
 *.gradle/
+.agents/
 _archive/
 skills-lock.json
 
