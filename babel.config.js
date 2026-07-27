@@ -7,6 +7,7 @@ module.exports = function (api) {
   const nativewindPlugins = require('nativewind/babel')()
     .plugins
     .filter(p => {
+      if (p == null) return false;
       const name = Array.isArray(p) ? p[0] : p;
       return name !== 'react-native-worklets/plugin';
     });

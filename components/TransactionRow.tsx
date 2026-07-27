@@ -1,11 +1,21 @@
-// components/TransactionRow.tsx — Ítem de transacción en listas
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+/**
+ * TransactionRow
+ * Responsabilidad: Fila de transaccion con monto, categoria y banco
+ * Usado por: historial, index, banco/[id]
+ * Depende de: categories, banks, CategoriaChip, Money
+ */
+import { View, Text, TouchableOpacity } from 'react-native';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
-import type { Transaccion } from '@/types/finance';
+import { CategoriaChip } from '@/components/CategoriaChip';
+import { Money } from '@/components/Money';
+import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
+import type { Transaccion, Moneda } from '@/types/finance';
 
 interface Props {
   transaccion: Transaccion;
+  moneda?: Moneda;
   onPress?: () => void;
 }
 
@@ -17,15 +27,13 @@ const FUENTE_LABEL: Record<string, string> = {
   email:       'Email',
 };
 
-export function TransactionRow({ transaccion: tx, onPress }: Props) {
+export function TransactionRow({ transaccion: tx, moneda = 'PYG', onPress }: Props) {
+  const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
   const cat   = CATEGORIA_POR_ID[tx.categoriaId];
   const banco = BANCO_POR_ID[tx.bancoId];
   const esIngreso = tx.monto > 0;
-
-  function formatMonto(n: number): string {
-    const abs = Math.abs(n);
-    return `Gs ${abs.toLocaleString('es-PY')}`;
-  }
+  const esEfectivo = tx.bancoId === 'efectivo' || tx.cuentaId === '__efectivo__';
 
   function formatFecha(iso: string): string {
     const d = new Date(iso);
@@ -42,89 +50,44 @@ export function TransactionRow({ transaccion: tx, onPress }: Props) {
   }
 
   return (
-    <TouchableOpacity style={s.row} onPress={onPress} activeOpacity={0.7}>
-      {/* Ícono de categoría */}
-      <View style={[s.iconBg, { backgroundColor: `${cat?.tinte ?? '#6B7280'}18` }]}>
-        <Text style={{ fontSize: 16 }}>
-          {getCatEmoji(tx.categoriaId)}
-        </Text>
-      </View>
+    <TouchableOpacity
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
+      }}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <CategoriaChip categoriaId={tx.categoriaId} size="md" />
 
-      {/* Info central */}
-      <View style={s.info}>
-        <Text style={s.descripcion} numberOfLines={1}>{tx.descripcion || cat?.nombre || 'Transacción'}</Text>
-        <View style={s.metaRow}>
-          {banco && (
-            <Text style={s.metaTexto}>{banco.corto}</Text>
-          )}
-          <Text style={s.metaSep}>·</Text>
-          <Text style={s.metaTexto}>{formatFecha(tx.fecha)}</Text>
-          <Text style={s.metaSep}>·</Text>
-          <Text style={[s.fuenteBadge, { color: cat?.tinte ?? '#9B8E84' }]}>
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text style={{ fontSize: 13.5, fontWeight: '500', color: t.ink }} numberOfLines={1}>
+          {tx.descripcion || cat?.nombre || 'Transacción'}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          {esEfectivo ? (
+            <View style={{
+              paddingHorizontal: 5, paddingVertical: 1,
+              backgroundColor: dark ? '#0d2218' : '#d8f0e6',
+              borderRadius: 4,
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: dark ? '#4db88a' : '#2d7a56' }}>Efectivo</Text>
+            </View>
+          ) : banco ? (
+            <Text style={{ fontSize: 11.5, color: t.muteText }}>{banco.corto}</Text>
+          ) : null}
+          {(esEfectivo || banco) && <Text style={{ fontSize: 11, color: t.ink3 }}>·</Text>}
+          <Text style={{ fontSize: 11.5, color: t.muteText }}>{formatFecha(tx.fecha)}</Text>
+          <Text style={{ fontSize: 11, color: t.ink3 }}>·</Text>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: cat?.tinte ?? t.muteText }}>
             {FUENTE_LABEL[tx.fuente] ?? tx.fuente}
           </Text>
         </View>
       </View>
 
-      {/* Monto */}
-      <Text style={[s.monto, { color: esIngreso ? '#3F8E5A' : '#A8401F' }]}>
-        {esIngreso ? '+' : '−'}{formatMonto(tx.monto)}
-      </Text>
+      <Money amount={tx.monto} currency={moneda} size="small" sign="always" />
     </TouchableOpacity>
   );
 }
-
-// Mapeo simple de categoría → emoji
-function getCatEmoji(catId: string): string {
-  const map: Record<string, string> = {
-    salario:       '💼',
-    honorarios:    '📋',
-    venta:         '🏷️',
-    intereses:     '📈',
-    transferencia: '↔️',
-    inversion:     '📊',
-    supermercado:  '🛒',
-    restaurante:   '🍽️',
-    combustible:   '⛽',
-    transporte:    '🚗',
-    servicios:     '⚡',
-    telefono:      '📱',
-    farmacia:      '💊',
-    ropa:          '👕',
-    hogar:         '🏠',
-    ocio:          '🎵',
-    retiro:        '💵',
-    deuda:         '💳',
-    educacion:     '📚',
-    salud:         '❤️',
-    otros:         '•',
-  };
-  return map[catId] ?? '•';
-}
-
-const s = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-  },
-  iconBg: {
-    width: 38, height: 38, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  info:        { flex: 1, gap: 3 },
-  descripcion: { fontSize: 13.5, fontWeight: '500', color: '#181513' },
-  metaRow:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaTexto:   { fontSize: 11.5, color: '#9B8E84' },
-  metaSep:     { fontSize: 11, color: '#C5BDB5' },
-  fuenteBadge: { fontSize: 11, fontWeight: '500' },
-  monto: {
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'GeistMono',
-    letterSpacing: -0.3,
-    flexShrink: 0,
-  },
-});

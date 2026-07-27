@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:gravity="center"
+  android:orientation="vertical"
+  android:padding="16dp"
+  android:background="#FAF8F4">
+
+  <TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="MiFinanzasPY"
+    android:textColor="#B36A2A"
+    android:textSize="14sp"
+    android:textStyle="bold" />
+
+  <TextView
+    android:id="@+id/widget_saldo_text"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Gs 0"
+    android:textColor="#181513"
+    android:textSize="24sp"
+    android:textStyle="bold"
+    android:fontFamily="sans-serif"
+    android:layout_marginTop="8dp" />
+
+</LinearLayout>

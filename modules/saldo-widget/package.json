@@ -1,0 +1,11 @@
+{
+  "name": "saldo-widget",
+  "version": "1.0.0",
+  "description": "Widget Android de saldo total",
+  "main": "src/index",
+  "types": "src/index",
+  "expo": {
+    "name": "SaldoWidget",
+    "platforms": ["android"]
+  }
+}

@@ -1,4 +1,9 @@
-// app/onboarding/_layout.tsx — Layout del flujo de onboarding
+/**
+ * onboarding/_layout.tsx
+ * Responsabilidad: Layout del flujo de onboarding (Stack navigator)
+ * Usado por: expo-router (onboarding layout root)
+ * Depende de: ninguno
+ */
 import { Stack } from 'expo-router';
 
 export default function OnboardingLayout() {
@@ -12,6 +17,8 @@ export default function OnboardingLayout() {
       }}
     >
       <Stack.Screen name="bienvenida" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="perfil" />
+      <Stack.Screen name="objetivos" />
       <Stack.Screen name="bancos" />
       <Stack.Screen name="permisos" />
     </Stack>

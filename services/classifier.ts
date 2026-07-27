@@ -1,9 +1,15 @@
-// services/classifier.ts — Motor de clasificación automática de transacciones
-import { KEYWORDS_CLASIFICACION, CATEGORIA_POR_ID } from '@/constants/categories';
+/**
+ * classifier
+ * Responsabilidad: Motor de clasificación automática de transacciones
+ * Usado por: QuickAddModal, index, chat, smsParser
+ * Depende de: database, categories
+ * Clasifica transacciones en 3 pasos: reglas usuario, palabras clave, fallback por monto
+ */
+import { KEYWORDS_CLASIFICACION } from '@/constants/categories';
 import { getReglas, insertRegla } from './database';
 import type { ReglaClasificacion } from '@/types/finance';
 
-// ─── Clasificación principal ─────────────────────────────────────
+
 
 /**
  * Clasifica una transacción por su descripción y monto.
@@ -19,7 +25,6 @@ export async function clasificarTransaccion(
 ): Promise<string> {
   const texto = descripcion.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  // 1) Reglas aprendidas del usuario (más alta prioridad)
   const reglas = await getReglas();
   for (const regla of reglas) {
     if (regla.esRegex) {
@@ -28,7 +33,7 @@ export async function clasificarTransaccion(
           return regla.categoriaId;
         }
       } catch {
-        // regex inválida — ignorar
+        console.warn('[Classifier] Invalid regex');
       }
     } else {
       if (texto.includes(regla.patronTexto.toLowerCase())) {
@@ -37,14 +42,12 @@ export async function clasificarTransaccion(
     }
   }
 
-  // 2) Palabras clave predefinidas
   for (const [keyword, catId] of KEYWORDS_CLASIFICACION) {
     if (texto.includes(keyword.toLowerCase())) {
       return catId;
     }
   }
 
-  // 3) Fallback por tipo de monto
   return monto > 0 ? 'salario' : 'otros';
 }
 
@@ -92,7 +95,7 @@ export async function aprenderRegla(
   await insertRegla(regla);
 }
 
-// ─── Proyección de salud financiera ─────────────────────────────
+
 
 export interface ResultadoProyeccion {
   pctGastado:       number;       // 0-100+
@@ -108,7 +111,9 @@ export function calcularProyeccion(
   ingresosMes: number,
   egresosMes: number,
   saldoActual: number
-): ResultadoProyeccion {
+): ResultadoProyeccion | null {
+  if (ingresosMes === 0 && egresosMes === 0) return null;
+
   const hoy = new Date();
   const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diaActual = hoy.getDate();
@@ -116,7 +121,7 @@ export function calcularProyeccion(
 
   const pctGastado = ingresosMes > 0
     ? Math.round((egresosMes / ingresosMes) * 100)
-    : (egresosMes > 0 ? 100 : 0);
+    : 100;
 
   // Tasa diaria de gasto
   const gastoDiario = diaActual > 0 ? egresosMes / diaActual : 0;
@@ -124,9 +129,9 @@ export function calcularProyeccion(
   const saldoProyectado = saldoActual - gastoRestante;
 
   let estadoSalud: ResultadoProyeccion['estadoSalud'];
-  if (pctGastado <= 70) {
+  if (pctGastado <= 40) {
     estadoSalud = 'estable';
-  } else if (pctGastado <= 90) {
+  } else if (pctGastado <= 70) {
     estadoSalud = 'atencion';
   } else {
     estadoSalud = 'riesgo';

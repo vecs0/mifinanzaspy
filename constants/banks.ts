@@ -123,16 +123,7 @@ export const BANKS: BancoInfo[] = [
     appPackage: 'py.com.regional.app',
     remitentes: ['REGIONAL', 'BANCOREGIONAL'],
   },
-  {
-    id: 'vision',
-    nombre: 'Visión Banco',
-    corto: 'Visión',
-    grupo: 'tradicional',
-    monograma: 'V',
-    tinte: '#1A8754',
-    appPackage: 'py.com.vision.app',
-    remitentes: ['VISION', 'VISIONBANCO'],
-  },
+
   // ── Bancos digitales y extranjeros ────────────────────────────
   {
     id: 'ueno',
@@ -214,6 +205,16 @@ export const BANKS: BancoInfo[] = [
     tinte: '#DC2626',
     appPackage: 'py.com.pagoexpress',
     remitentes: ['PAGOEXPRESS', 'PAGO_EXPRESS'],
+  },
+  {
+    id: 'mango',
+    nombre: 'Mango',
+    corto: 'Mango',
+    grupo: 'billetera',
+    monograma: 'M',
+    tinte: '#F59E0B',
+    appPackage: 'py.com.mango.app',
+    remitentes: ['MANGO'],
   },
 ];
 

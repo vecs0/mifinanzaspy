@@ -49,6 +49,7 @@ export interface CuentaBancaria {
   notifHabilitada: boolean;
   color:           string;      // Color hex de identificación visual
   icono:           string;      // Nombre del ícono
+  orden:           number;      // Posición de ordenamiento (0 = primero)
   fechaCreacion:   string;      // ISO date
 }
 
@@ -78,6 +79,11 @@ export interface Transaccion {
   smsRaw:        string | null; // Texto original del SMS (para auditoría)
   procesado:     boolean;     // Si ya fue clasificado y confirmado
   notas:         string | null; // Nota libre del usuario
+  adjunto:       string | null; // URI de imagen/PDF adjunto
+  esTraspaso?:   number;      // 1 si es traspaso entre cuentas propias
+  cuentaParId?:  string | null; // FK → CuentaBancaria.id (la otra cuenta)
+  contraparteBancoId?: string | null; // banco_id detectado por Gemini
+  contraparteNombre?: string | null;  // Nombre de persona/empresa en descripción
 }
 
 // ─── Regla de clasificación automática ──────────────────────────
@@ -129,16 +135,17 @@ export interface ResumenMensual {
   comparacionMes:   number;   // Diferencia vs mes anterior (%)
 }
 
-export interface ProyeccionMes {
-  diasRestantes:     number;
-  gastoProyectado:   number;
-  ingresoEstimado:   number;
-  saldoProyectado:   number;
-  pctIngresoGastado: number;
-  estadoSalud:       EstadoSalud;
-}
-
 // ─── Estado del onboarding ───────────────────────────────────────
+
+export interface NotificacionApp {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  tipo: 'bienvenida' | 'alerta' | 'info' | 'reporte';
+  leida: boolean;
+  eliminada: boolean;
+  fechaCreacion: string;
+}
 
 export interface EstadoOnboarding {
   completado:        boolean;
@@ -148,42 +155,4 @@ export interface EstadoOnboarding {
   permisoNotif:      boolean;
 }
 
-// ─── Contexto financiero para el chatbot IA ─────────────────────
 
-export interface ContextoFinancieroIA {
-  fechaConsulta:      string;
-  saldoTotal:         number;
-  cuentas:            { alias: string; banco: string; saldo: number; moneda: Moneda }[];
-  resumenMes:         ResumenMensual;
-  proyeccion:         ProyeccionMes;
-  ultimasTransacciones: Pick<Transaccion, 'descripcion' | 'monto' | 'categoriaId' | 'fecha' | 'bancoId'>[];
-  topGastosCategoria: { categoriaId: string; nombre: string; total: number }[];
-}
-
-// ─── Datos de barras para el gráfico semanal ────────────────────
-
-export interface DatoBarra {
-  fecha: string;   // "2026-05-23"
-  dia:   string;   // "Vie"
-  total: number;   // Total egresos del día (positivo)
-}
-
-// ─── Store global (Zustand) ──────────────────────────────────────
-
-export interface AppStore {
-  // Estado
-  onboarding:    EstadoOnboarding;
-  cuentas:       CuentaBancaria[];
-  transacciones: Transaccion[];
-  categorias:    Categoria[];
-  proyeccion:    ProyeccionMes | null;
-  cargando:      boolean;
-  error:         string | null;
-
-  // Acciones
-  cargarDatos:          () => Promise<void>;
-  agregarTransaccion:   (tx: Omit<Transaccion, 'id'>) => Promise<void>;
-  actualizarSaldo:      (cuentaId: string, saldo: number) => Promise<void>;
-  completarOnboarding:  (datos: Partial<EstadoOnboarding>) => Promise<void>;
-  calcularProyeccion:   () => ProyeccionMes;
-}

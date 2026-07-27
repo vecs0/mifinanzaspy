@@ -1,3 +1,9 @@
+/**
+ * +not-found.tsx
+ * Responsabilidad: Pantalla 404 para rutas inexistentes
+ * Usado por: expo-router (auto)
+ * Depende de: ninguno
+ */
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 

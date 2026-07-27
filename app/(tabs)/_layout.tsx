@@ -1,21 +1,36 @@
-// app/(tabs)/_layout.tsx — Tab bar principal con íconos SVG reales
-import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+/**
+ * (tabs)/_layout.tsx
+ * Responsabilidad: Tab bar principal con íconos SVG
+ * Usado por: expo-router (tabs layout root)
+ * Depende de: ThemeContext
+ */
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Tabs, usePathname, router } from 'expo-router';
+import { View, Text, TouchableOpacity, BackHandler, StyleSheet, Modal, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark, borderRadius as br } from '@/theme/design-system';
 
-const C = {
-  bg:     '#FAF8F4',
-  ink:    '#181513',
-  accent: '#B36A2A',
-  muted:  '#9B8E84',
-  border: 'rgba(24,21,19,0.07)',
-};
+const TAB_PATHS = ['/', '/historial', '/reportes', '/crecer', '/chat'] as const;
+type TabPath = typeof TAB_PATHS[number];
 
-// ─── SVG icons — mismas paths que common.jsx del prototipo ───────
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const color  = focused ? C.accent : C.muted;
+  const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
+  const scale = useRef(new Animated.Value(1)).current;
+  const color  = focused ? t.accent : t.ink3;
   const stroke = { stroke: color, strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: focused ? 1.35 : 1,
+      friction: 5,
+      tension: 140,
+      useNativeDriver: true,
+    }).start();
+  }, [focused]);
 
   const icons: Record<string, React.ReactNode> = {
     'home-nav': <Path d="M3 11l9-7 9 7v9h-6v-6h-6v6H3z" {...stroke} />,
@@ -29,71 +44,188 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
                   <Path d="M12 3v9h9a9 9 0 11-9-9z" {...stroke} />
                   <Path d="M14 3a7 7 0 017 7h-7V3z" {...stroke} />
                 </>,
+    'crecer':   <>
+                  <Path d="M12 22V12" {...stroke} />
+                  <Path d="M12 12C12 7 7 4 3 6c2 3 5 5 9 6z" {...stroke} />
+                  <Path d="M12 12C12 7 17 4 21 6c-2 3-5 5-9 6z" {...stroke} />
+                  <Path d="M12 16C12 13 9 11 6 12c1 2 3 3 6 4z" {...stroke} />
+                </>,
     'chat':     <Path d="M4 5h16v11h-7l-5 4v-4H4z" {...stroke} />,
   };
 
   return (
-    <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        {icons[name]}
-      </Svg>
-    </View>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={22} height={22} viewBox="0 0 24 24">
+          {icons[name]}
+        </Svg>
+      </View>
+    </Animated.View>
+  );
+}
+
+function TabLabel({ label, focused }: { label: string; focused: boolean }) {
+  const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
+  const opacity = useRef(new Animated.Value(focused ? 1 : 0.6)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: focused ? 1 : 0.6,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [focused]);
+
+  return (
+    <Animated.Text
+      style={{
+        fontFamily: 'Geist',
+        fontSize: 10.5,
+        letterSpacing: 0.2,
+        marginTop: 2,
+        color: focused ? t.accent : t.ink3,
+        fontWeight: focused ? '700' : '500',
+        opacity,
+      }}
+    >
+      {label}
+    </Animated.Text>
   );
 }
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const { dark } = useThemeCtx();
+  const [mostrarSalir, setMostrarSalir] = useState(false);
+  const pathname = usePathname();
+  const pathRef = useRef<TabPath>(pathname as TabPath);
+
+  const t = dark ? colorsDark : colors;
+
+  useEffect(() => {
+    pathRef.current = pathname as TabPath;
+  }, [pathname]);
+
+  const getTabIndex = useCallback(() => {
+    const idx = TAB_PATHS.indexOf(pathRef.current);
+    return idx >= 0 ? idx : 0;
+  }, []);
+
+  useEffect(() => {
+    const onBack = () => {
+      const idx = getTabIndex();
+      if (idx === 0) {
+        setMostrarSalir(true);
+      } else {
+        router.navigate('/' as any);
+      }
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => subscription.remove();
+  }, [getTabIndex]);
+
+  const swipe = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-22, 22])
+    .failOffsetY([-14, 14])
+    .onEnd((e) => {
+      const idx = getTabIndex();
+      if (e.translationX < -50 && idx < TAB_PATHS.length - 1) {
+        router.navigate(TAB_PATHS[idx + 1] as any);
+      } else if (e.translationX > 50 && idx > 0) {
+        router.navigate(TAB_PATHS[idx - 1] as any);
+      }
+    });
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: C.bg,
-          borderTopColor: C.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          paddingBottom: insets.bottom + 4,
-          paddingTop: 8,
-          height: 56 + insets.bottom,
-        },
-        tabBarActiveTintColor:   C.accent,
-        tabBarInactiveTintColor: C.muted,
-        tabBarLabelStyle: {
-          fontFamily: 'Geist',
-          fontSize: 10.5,
-          letterSpacing: 0.2,
-          marginTop: 2,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Panel',
-          tabBarIcon: ({ focused }) => <TabIcon name="home-nav" focused={focused} />,
+    <GestureDetector gesture={swipe}>
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: t.bg,
+            borderTopColor: t.hairline,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            paddingBottom: Math.max(insets.bottom, 8),
+            paddingTop: 8,
+            height: 60 + Math.max(insets.bottom, 8),
+          },
+          tabBarActiveTintColor:   t.accent,
+          tabBarInactiveTintColor: t.ink3,
         }}
-      />
-      <Tabs.Screen
-        name="historial"
-        options={{
-          title: 'Historial',
-          tabBarIcon: ({ focused }) => <TabIcon name="list" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="reportes"
-        options={{
-          title: 'Reportes',
-          tabBarIcon: ({ focused }) => <TabIcon name="pie" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Asesor IA',
-          tabBarIcon: ({ focused }) => <TabIcon name="chat" focused={focused} />,
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            tabBarLabel: ({ focused }) => <TabLabel label="Panel" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="home-nav" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="historial"
+          options={{
+            tabBarLabel: ({ focused }) => <TabLabel label="Historial" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="list" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="reportes"
+          options={{
+            tabBarLabel: ({ focused }) => <TabLabel label="Reportes" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="pie" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="crecer"
+          options={{
+            tabBarLabel: ({ focused }) => <TabLabel label="Crecé" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="crecer" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="chat"
+          options={{
+            tabBarLabel: ({ focused }) => <TabLabel label="Asesor IA" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="chat" focused={focused} />,
+          }}
+        />
+      </Tabs>
+
+      <Modal visible={mostrarSalir} transparent animationType="fade" onRequestClose={() => setMostrarSalir(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <View style={{ backgroundColor: t.card, borderRadius: br.xl, padding: 24, width: '100%', maxWidth: 300, borderWidth: 1, borderColor: t.hairline, gap: 16 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${t.accent}20`, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
+              <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <Path d="M16 17l5-5-5-5" />
+                <Path d="M21 12H9" />
+              </Svg>
+            </View>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink, textAlign: 'center' }}>Salir de la app</Text>
+            <Text style={{ fontSize: 13, color: t.ink2, textAlign: 'center', lineHeight: 18 }}>
+              ¿Estás seguro de que querés salir?
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: br.md, backgroundColor: t.accent, alignItems: 'center' }}
+                onPress={() => BackHandler.exitApp()}
+              >
+                <Text style={{ color: '#FAF8F4', fontSize: 14, fontWeight: '600' }}>Salir</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: br.md, backgroundColor: t.hairline, alignItems: 'center' }}
+                onPress={() => setMostrarSalir(false)}
+              >
+                <Text style={{ color: t.ink, fontSize: 14, fontWeight: '500' }}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+    </GestureDetector>
   );
 }

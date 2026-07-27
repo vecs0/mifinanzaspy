@@ -1,6 +1,11 @@
-// services/smsParser.ts — Parseo de SMS bancarios paraguayos
-// Usa los patrones de constants/smsPatterns.ts para extraer datos de transacción
-// desde el texto crudo del SMS.
+/**
+ * smsParser
+ * Responsabilidad: Parseo de SMS bancarios paraguayos (7 pasos: identificar banco,
+ *   extraer monto/tipo, saldo posterior, descripcion, buscar cuenta, clasificar, montar)
+ * Usado por: smsService (interno)
+ * Depende de: classifier, database, smsPatterns
+ * Llamado desde el BroadcastReceiver antes de procesar completo (esSMSBancario)
+ */
 import {
   BANK_SMS_PATTERNS,
   detectarBancoPorRemitente,
@@ -9,8 +14,6 @@ import {
 import { clasificarSincrono } from '@/services/classifier';
 import { getCuentas } from '@/services/database';
 import type { Transaccion, FuenteCaptura } from '@/types/finance';
-
-// ─── Tipos internos ──────────────────────────────────────────────
 
 export interface ResultadoParseoSMS {
   /** true si el SMS fue reconocido como bancario */
@@ -25,7 +28,6 @@ export interface ResultadoParseoSMS {
   razon:       string | null;
 }
 
-// ─── Función principal ───────────────────────────────────────────
 
 /**
  * Parsea un SMS bancario y retorna un ResultadoParseoSMS.
@@ -39,7 +41,6 @@ export async function parsearSMS(
   cuerpo: string,
   fechaSMS: number | string,
 ): Promise<ResultadoParseoSMS> {
-  // 1. Identificar banco por remitente
   const bancoId = detectarBancoPorRemitente(remitente);
   if (!bancoId) {
     return {
@@ -58,7 +59,6 @@ export async function parsearSMS(
     };
   }
 
-  // 2. Extraer monto y tipo de transacción
   let monto:  number | null = null;
   let tipo:   'debito' | 'credito' | 'transferencia' = 'debito';
 
@@ -73,7 +73,6 @@ export async function parsearSMS(
     tipo  = 'credito';
   }
 
-  // Detectar transferencias por palabras clave comunes
   const esTransferencia = /transfer|transf\.|enviaste|enviado|recibiste de/i.test(cuerpo);
   if (esTransferencia && monto !== null) {
     tipo = 'transferencia';
@@ -87,7 +86,7 @@ export async function parsearSMS(
     };
   }
 
-  // 3. Extraer saldo posterior (opcional)
+
   let saldoPost: number | null = null;
   if (patron.regexSaldo) {
     const matchSaldo = patron.regexSaldo.exec(cuerpo);
@@ -96,7 +95,7 @@ export async function parsearSMS(
     }
   }
 
-  // 4. Extraer descripción / comercio
+
   let descripcion = '';
   if (patron.regexComercio) {
     const matchComercio = patron.regexComercio.exec(cuerpo);
@@ -105,7 +104,7 @@ export async function parsearSMS(
     }
   }
   if (!descripcion) {
-    // Fallback: primer fragmento no-numérico del cuerpo (hasta 40 chars)
+
     descripcion = cuerpo
       .replace(/Gs\.?\s*[\d.,]+/gi, '')
       .replace(/\s{2,}/g, ' ')
@@ -113,7 +112,7 @@ export async function parsearSMS(
       .slice(0, 40);
   }
 
-  // 5. Buscar la cuenta correspondiente al banco
+
   let cuentaId: string | null = null;
   let bancoIdCuenta = bancoId;
   try {
@@ -123,8 +122,8 @@ export async function parsearSMS(
       cuentaId      = cuenta.id;
       bancoIdCuenta = cuenta.bancoId;
     }
-  } catch {
-    // En módulo nativo puede no tener acceso a DB todavía — se asigna después
+  } catch (e) {
+    console.warn('[smsParser] Error buscando cuenta en DB:', e);
   }
 
   if (!cuentaId) {
@@ -135,10 +134,10 @@ export async function parsearSMS(
     };
   }
 
-  // 6. Clasificar categoría automáticamente
+
   const categoriaId = clasificarSincrono(descripcion, tipo === 'credito' ? monto : -monto);
 
-  // 7. Montar transacción parcial
+
   const fecha = typeof fechaSMS === 'number'
     ? new Date(fechaSMS).toISOString()
     : new Date(fechaSMS).toISOString();
@@ -157,10 +156,11 @@ export async function parsearSMS(
     saldoPost,
     smsRaw:     cuerpo,
     procesado:  false,
+    adjunto:    null,
     notas:      null,
   };
 
-  // Determinar nivel de confianza
+
   const confianza: ResultadoParseoSMS['confianza'] =
     descripcion.length > 3 && saldoPost !== null ? 'alta' :
     descripcion.length > 3                        ? 'media' :
@@ -172,10 +172,7 @@ export async function parsearSMS(
   };
 }
 
-// ─── Variante síncrona (sin acceso a DB) ────────────────────────
-// Útil en el módulo nativo donde no se puede usar async/await de DB
-// directamente. Retorna la transacción sin cuentaId — el llamador
-// debe asignarlo.
+
 
 export function parsearSMSSincrono(
   remitente: string,
@@ -242,14 +239,13 @@ export function parsearSMSSincrono(
     smsRaw:     cuerpo,
     procesado:  false,
     notas:      null,
+    adjunto:    null,
   };
 }
 
-// ─── Filtro rápido: ¿es este SMS bancario? ──────────────────────
-// Llamado desde el BroadcastReceiver antes de procesar completo.
 
 export function esSMSBancario(remitente: string, cuerpo: string): boolean {
   if (detectarBancoPorRemitente(remitente)) return true;
-  // Heurística de respaldo: el cuerpo menciona "Gs" y tiene dígitos
+
   return /\bGs\.?\s*[\d.,]{3,}/i.test(cuerpo);
 }

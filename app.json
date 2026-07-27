@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#FAF8F4"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -21,7 +21,12 @@
       "buildNumber": "1.0.0",
       "infoPlist": {
         "NSCameraUsageDescription": "La app puede usar la cámara para escanear comprobantes.",
-        "NSPhotoLibraryUsageDescription": "La app puede acceder a imágenes para importar comprobantes."
+        "NSPhotoLibraryUsageDescription": "La app puede acceder a imágenes para importar comprobantes.",
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -31,13 +36,20 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
+      "splash": {
+        "backgroundColor": "#FAF8F4",
+        "imageWidth": 280,
+        "resizeMode": "contain"
+      },
       "permissions": [
         "RECEIVE_SMS",
         "READ_SMS",
         "POST_NOTIFICATIONS",
-        "INTERNET"
+        "INTERNET",
+        "android.permission.RECORD_AUDIO"
       ],
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,35 +57,28 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-updates",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FAF8F4",
+          "image": "./assets/splash.png",
+          "imageWidth": 280,
+          "resizeMode": "contain"
+        }
+      ]
     ],
+    "updates": {
+      "enabled": true,
+      "url": "https://u.expo.dev/be4592b1-3f74-4649-9782-2f8bd460f8b1"
+    },
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "anthropicApiUrl": "https://api.anthropic.com/v1/messages",
       "supportedBanks": [
-        "itau",
-        "continental",
-        "gnb",
-        "sudameris",
-        "bnf",
-        "basa",
-        "atlas",
-        "familiar",
-        "bancop",
-        "interfisa",
-        "solar",
-        "regional",
-        "vision",
-        "ueno",
-        "zeta",
-        "citi",
-        "bna",
-        "bbrasil",
-        "tigo_money",
-        "personal_pay",
-        "pago_express",
         "itau",
         "continental",
         "gnb",
