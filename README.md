@@ -1,5 +1,7 @@
 # MiFinanzasPY
 
+- **Fecha de inicio del proyecto:** 23/05/2026 *(según historial de archivos)*
+
 App de finanzas personales para Paraguay. React Native / Expo SDK 54, NativeWind v4, SQLite. Offline-first, sin servidor.
 
 ## Stack
