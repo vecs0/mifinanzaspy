@@ -19,11 +19,21 @@ async function getOrCreateKey(): Promise<string> {
   } catch {
     throw new Error('SecureStore no disponible');
   }
-  let key = await SecureStore.getItemAsync(KEY_STORE);
+  let key: string | null = null;
+  try {
+    key = await SecureStore.getItemAsync(KEY_STORE);
+  } catch (e) {
+    throw new Error('No se pudo leer la clave de SecureStore');
+  }
+  if (key && !/^[0-9a-f]{64}$/i.test(key)) key = null;
   if (!key) {
-    const random = await getRandomBytesAsync(32);
+    const random = await getRandomBytesAsync(KEY_LENGTH);
     key = Array.from(random).map(b => b.toString(16).padStart(2, '0')).join('');
-    await SecureStore.setItemAsync(KEY_STORE, key);
+    try {
+      await SecureStore.setItemAsync(KEY_STORE, key);
+    } catch (e) {
+      throw new Error('No se pudo guardar la clave en SecureStore');
+    }
   }
   return key;
 }
@@ -49,11 +59,16 @@ function hexToUint8Array(hex: string): Uint8Array {
   return bytes;
 }
 
-let keyCache: string | null = null;
+let keyPromise: Promise<string> | null = null;
 
-async function getKey(): Promise<string> {
-  if (!keyCache) keyCache = await getOrCreateKey();
-  return keyCache;
+function getKey(): Promise<string> {
+  if (!keyPromise) {
+    keyPromise = getOrCreateKey().catch(e => {
+      keyPromise = null;
+      throw e;
+    });
+  }
+  return keyPromise;
 }
 
 function xorEncode(text: string, key: string): string {

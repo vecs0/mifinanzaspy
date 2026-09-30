@@ -29,3 +29,6 @@ skills-lock.json
 
 expo-env.d.ts
 # @end expo-cli
+# debug keystore
+*.keystore
+!release.keystore.example
