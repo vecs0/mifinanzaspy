@@ -1,7 +1,8 @@
 /**
  * Gemini Proxy Worker - Cloudflare Workers
  * Secrets: GEMINI_API_KEY (obligatorio), APP_TOKEN (opcional)
- * Vars: GEMINI_MODEL, ALLOWED_ORIGIN, RATE_LIMIT_PER_MIN
+ * Vars: GEMINI_MODEL, ALLOWED_ORIGIN (vacio = sin CORS), RATE_LIMIT_PER_MIN
+ * Binding opcional: RATE_LIMITER (Cloudflare Rate Limiting, contador compartido)
  * Request: POST { body } con header x-app-token si APP_TOKEN esta definido
  */
 
@@ -10,8 +11,9 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 const hits = new Map();
 
 function cors(env) {
+  if (!env.ALLOWED_ORIGIN) return {};
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
+    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, x-app-token',
   };
@@ -24,13 +26,22 @@ function json(env, status, obj) {
   });
 }
 
-function limited(env, ip) {
+async function limited(env, ip) {
+  if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === 'function') {
+    const { success } = await env.RATE_LIMITER.limit({ key: ip });
+    return !success;
+  }
   const max = parseInt(env.RATE_LIMIT_PER_MIN || '30', 10);
   const now = Date.now();
   const arr = (hits.get(ip) || []).filter(t => now - t < 60000);
   arr.push(now);
   hits.set(ip, arr);
-  if (hits.size > 5000) hits.clear();
+  if (hits.size > 5000) {
+    for (const [k, v] of hits) {
+      if (!v.length || now - v[v.length - 1] >= 60000) hits.delete(k);
+    }
+    if (hits.size > 5000) hits.delete(hits.keys().next().value);
+  }
   return arr.length > max;
 }
 
@@ -53,7 +64,7 @@ export default {
     }
 
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-    if (limited(env, ip)) return json(env, 429, { error: 'Demasiadas solicitudes' });
+    if (await limited(env, ip)) return json(env, 429, { error: 'Demasiadas solicitudes' });
 
     const len = parseInt(request.headers.get('Content-Length') || '0', 10);
     if (len > MAX_BODY_BYTES) return json(env, 413, { error: 'Cuerpo demasiado grande' });
