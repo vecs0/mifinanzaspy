@@ -6,7 +6,6 @@
  */
 import { llamarAIProxy } from '@/services/apiConfig';
 
-const MODEL = 'gemini-2.5-flash';
 
 export interface OcrResultado {
   monto?: number;
@@ -101,7 +100,7 @@ Nada de texto extra, solo el JSON.` },
   };
 
   try {
-    const resp = await llamarAIProxy(MODEL, body);
+    const resp = await llamarAIProxy(body);
 
     if (!resp.ok) {
       let detalle = '';

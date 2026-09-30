@@ -52,10 +52,11 @@ cd mifinanzaspy
 npm install
 ```
 
-Crear `.env.local` con la API key de Gemini:
+Crear `.env.local` con la URL del Worker proxy (la key de Gemini vive solo en el Worker):
 
 ```
-EXPO_PUBLIC_GEMINI_API_KEY=AIzaXXXXXXXXXXXXXX
+EXPO_PUBLIC_WORKER_URL=https://tu-worker.workers.dev
+EXPO_PUBLIC_WORKER_APP_TOKEN=opcional
 ```
 
 Iniciar dev server:
@@ -102,7 +103,7 @@ components/           # Componentes reutilizables
 services/             # Logica de negocio
   database.ts         # Capa SQLite
   classifier.ts       # Clasificacion de transacciones
-  geminiDirect.ts     # LLM Gemini
+  apiConfig.ts        # Cliente del proxy Gemini
   importService.ts    # Importacion CSV/PDF/imagen
   smsParser.ts        # Parseo de SMS bancarios
   encryption.ts       # Encriptacion

@@ -2,13 +2,11 @@
  * batchImportService
  * Responsabilidad: Importación masiva de comprobantes con IA
  * Usado por: components/comprobante/BatchPickerScreen
- * Depende de: apiConfig, geminiDirect, importService
+ * Depende de: apiConfig, importService
  */
 import { llamarAIProxy } from '@/services/apiConfig';
-import { llamarGeminiDirecto } from '@/services/geminiDirect';
 import type { PreviewItem } from '@/services/importService';
 
-const MODEL = 'gemini-2.5-flash';
 
 function limpiarJSON(texto: string): string {
   return texto
@@ -153,7 +151,7 @@ async function analizarUnaImagen(
   index: number,
 ): Promise<{ items: PreviewItem[]; error?: string; index: number }> {
   try {
-    const resp = await llamarAIProxy(MODEL, {
+    const resp = await llamarAIProxy({
       contents: [{
         role: 'user',
         parts: [
@@ -191,7 +189,7 @@ async function analizarUnPDF(
   mimeType: string,
 ): Promise<{ items: PreviewItem[]; banco?: string; error?: string; totalEsperado?: number }> {
   try {
-    const resp = await llamarGeminiDirecto('gemini-2.5-flash', {
+    const resp = await llamarAIProxy({
       contents: [{
         role: 'user',
         parts: [

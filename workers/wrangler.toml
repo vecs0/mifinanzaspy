@@ -1,0 +1,12 @@
+name = "gemini-proxy"
+main = "gemini-proxy.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+ALLOWED_ORIGIN = "*"
+RATE_LIMIT_PER_MIN = "30"
+
+# Secrets (NO ponerlos aqui). Setear con:
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put APP_TOKEN   (opcional, mismo valor que EXPO_PUBLIC_WORKER_APP_TOKEN)

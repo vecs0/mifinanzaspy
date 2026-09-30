@@ -300,7 +300,7 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 3. **`modules/`** — modulos nativos Kotlin. Solo tocar si se esta haciendo EAS Build y se necesita modificar el comportamiento nativo.
 4. **`workers/gemini-proxy.js`** — Cloudflare Worker. Solo tocar si se cambia el provider de IA o la URL del proxy.
 5. **`app/transaccion/settings.tsx.bak`** — backup viejo, se puede eliminar.
-6. **`app.config.js`** — no tocar la logica de resolucion de API key. Solo cambiar `EXPO_PUBLIC_GEMINI_API_KEY` via EAS secret.
+6. **`app.config.js`** — solo resuelve `EXPO_PUBLIC_WORKER_URL` y `EXPO_PUBLIC_WORKER_APP_TOKEN`. Nunca exponer la key de Gemini al cliente.
 7. **`babel.config.js`** — config delicada con plugins de Reanimated y NativeWind. No modificar sin entender las interacciones.
 8. **`app.json`** — no hardcodear API key. Usar `app.config.js` + env vars.
 
