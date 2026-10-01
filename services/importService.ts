@@ -2,14 +2,12 @@
  * importService
  * Responsabilidad: Parseo CSV/PDF e importación con IA
  * Usado por: importar, comprobante, BatchPickerScreen, batchImportService, transaccionValidator
- * Depende de: database, apiConfig, geminiDirect, expo-file-system
+ * Depende de: database, apiConfig, expo-file-system
  */
 import { File } from 'expo-file-system';
 import { insertTransaccion, getCuentas } from '@/services/database';
 import { llamarAIProxy } from '@/services/apiConfig';
-import { llamarGeminiDirecto } from '@/services/geminiDirect';
 
-const MODEL = 'gemini-2.5-flash';
 
 function limpiarJSON(texto: string): string {
   let t = texto
@@ -202,7 +200,7 @@ export async function parseCSVtoPreview(uri: string): Promise<{ items: PreviewIt
 const PREFILL_ARR = '[{"monto":';
 export async function parseOCRtoPreview(base64: string, mimeType: string): Promise<{ items: PreviewItem[]; error?: string }> {
   try {
-    const resp = await llamarAIProxy(MODEL, {
+    const resp = await llamarAIProxy({
       contents: [
         {
           role: 'user',
@@ -260,7 +258,7 @@ Ejemplo: [{"monto":-50000,"descripcion":"Supermercado","fecha":"2026-05-29"}]` }
 
 export async function analizarPDF(base64: string, mimeType: string): Promise<{ items: PreviewItem[]; error?: string; banco?: string; totalEsperado?: number }> {
   try {
-    const resp = await llamarGeminiDirecto('gemini-2.5-flash', {
+    const resp = await llamarAIProxy({
       contents: [
         {
           role: 'user',

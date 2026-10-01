@@ -1,98 +1,113 @@
 /**
- * Gemini Proxy Worker — Cloudflare Workers
- *
- * Deploy: copiá este código en https://dash.cloudflare.com → Workers & Pages → Create Worker
- * Seteá la variable de entorno GEMINI_API_KEY con tu key de Gemini
- *
- * Uso desde la app:
- *   POST https://tu-worker.nombre.workers.dev
- *   Body: { model, endpoint, body }
- *
- *   model    — ej: "gemini-2.5-flash"
- *   endpoint — "v1beta" (default)
- *   body     — el payload completo de Gemini
+ * Gemini Proxy Worker - Cloudflare Workers
+ * Secrets: GEMINI_API_KEY (obligatorio), APP_TOKEN (opcional)
+ * Vars: GEMINI_MODEL, ALLOWED_ORIGIN (vacio = sin CORS), RATE_LIMIT_PER_MIN
+ * Binding opcional: RATE_LIMITER (Cloudflare Rate Limiting, contador compartido)
+ * Request: POST { body } con header x-app-token si APP_TOKEN esta definido
  */
+
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+const hits = new Map();
+
+function cors(env) {
+  if (!env.ALLOWED_ORIGIN) return {};
+  return {
+    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, x-app-token',
+  };
+}
+
+function json(env, status, obj) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...cors(env) },
+  });
+}
+
+async function limited(env, ip) {
+  if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === 'function') {
+    const { success } = await env.RATE_LIMITER.limit({ key: ip });
+    return !success;
+  }
+  const max = parseInt(env.RATE_LIMIT_PER_MIN || '30', 10);
+  const now = Date.now();
+  const arr = (hits.get(ip) || []).filter(t => now - t < 60000);
+  arr.push(now);
+  hits.set(ip, arr);
+  if (hits.size > 5000) {
+    for (const [k, v] of hits) {
+      if (!v.length || now - v[v.length - 1] >= 60000) hits.delete(k);
+    }
+    if (hits.size > 5000) hits.delete(hits.keys().next().value);
+  }
+  return arr.length > max;
+}
+
+function tokenOk(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
 
 export default {
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+    if (request.method === 'OPTIONS') return new Response(null, { headers: cors(env) });
+    if (request.method !== 'POST') return json(env, 405, { error: 'Solo POST' });
+    if (!env.GEMINI_API_KEY) return json(env, 500, { error: 'Servidor no configurado' });
+
+    if (env.APP_TOKEN) {
+      const sent = request.headers.get('x-app-token') || '';
+      if (!tokenOk(sent, env.APP_TOKEN)) return json(env, 401, { error: 'No autorizado' });
     }
 
-    if (request.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'Solo POST' }), {
-        status: 405,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    }
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (await limited(env, ip)) return json(env, 429, { error: 'Demasiadas solicitudes' });
 
-    const GEMINI_API_KEY = env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Falta GEMINI_API_KEY en env' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+    const len = parseInt(request.headers.get('Content-Length') || '0', 10);
+    if (len > MAX_BODY_BYTES) return json(env, 413, { error: 'Cuerpo demasiado grande' });
+
+    let text;
+    try {
+      text = await request.text();
+    } catch {
+      return json(env, 400, { error: 'Solicitud invalida' });
     }
+    if (text.length > MAX_BODY_BYTES) return json(env, 413, { error: 'Cuerpo demasiado grande' });
 
     let payload;
     try {
-      payload = await request.json();
+      payload = JSON.parse(text);
     } catch {
-      return new Response(JSON.stringify({ error: 'JSON inválido' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+      return json(env, 400, { error: 'JSON invalido' });
     }
 
-    const model = payload.model || 'gemini-2.5-flash';
-    const endpoint = payload.endpoint || 'v1beta';
-    const geminiBody = payload.body;
-
-    if (!geminiBody) {
-      return new Response(JSON.stringify({ error: 'Falta body' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+    const geminiBody = payload && payload.body;
+    if (!geminiBody || typeof geminiBody !== 'object' || !Array.isArray(geminiBody.contents)) {
+      return json(env, 400, { error: 'Falta body.contents' });
     }
 
-    const url = `https://generativelanguage.googleapis.com/${endpoint}/models/${model}:generateContent`;
+    const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     try {
-      const geminiResp = await fetch(url, {
+      const resp = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY,
-        },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
         body: JSON.stringify(geminiBody),
       });
-
-      if (!geminiResp.ok) {
-        const errText = await geminiResp.text().catch(() => '(sin detalle)');
-        return new Response(JSON.stringify({
-          error: `Gemini API error (${geminiResp.status})`,
-          detalle: errText.slice(0, 500),
-        }), {
-          status: geminiResp.status,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        return json(env, resp.status, {
+          error: `Gemini API error (${resp.status})`,
+          detalle: errText.slice(0, 300),
         });
       }
-
-      const data = await geminiResp.json();
-      return new Response(JSON.stringify(data), {
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+      return json(env, 200, await resp.json());
+    } catch {
+      return json(env, 502, { error: 'Error al contactar Gemini' });
     }
   },
 };

@@ -23,7 +23,6 @@ import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark, fonts } from '@/theme/design-system';
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
 const GREEN       = '#3F8E5A';
 const GREEN_LIGHT = '#4db88a';
 
@@ -282,7 +281,7 @@ async function llamarGemini(historial: Mensaje[], texto: string): Promise<string
   const msgs = [...historial, { id: '', rol: 'user' as const, texto, fecha: new Date() }]
     .filter((m, i) => m.rol !== 'assistant' || i > 0);
 
-  const resp = await llamarAIProxy(GEMINI_MODEL, {
+  const resp = await llamarAIProxy({
     system_instruction: {
       parts: [{ text: `${SYSTEM_PROMPT}\n\nContexto financiero del usuario:\n${contexto}` }],
     },
