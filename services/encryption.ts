@@ -15,7 +15,7 @@ const KEY_LENGTH = 32;
 async function getOrCreateKey(): Promise<string> {
   let SecureStore: any;
   try {
-    SecureStore = await import('expo-secure-store');
+    SecureStore = require('expo-secure-store');
   } catch {
     throw new Error('SecureStore no disponible');
   }
