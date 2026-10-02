@@ -40,10 +40,8 @@ finanzas-py/
 │   │   ├── [id].tsx            # Detalle de transaccion
 │   │   └── settings.tsx        # Ajustes completo
 │   ├── comprobante.tsx         # Captura de comprobantes (5 pasos)
-│   ├── categorias.tsx          # CRUD categorias personalizadas
 │   ├── recordatorios.tsx       # CRUD recordatorios de pagos
-│   ├── scan.tsx                # Escaneo con camara (OCR)
-│   └── ... (presupuestos, duplicados, importar, etc.)
+│   └── ... (presupuestos, duplicados, etc.)
 ├── components/
 │   ├── BankCard.tsx, BankChip.tsx, BankLogo.tsx
 │   ├── TransactionRow.tsx, QuickAddModal.tsx
@@ -165,6 +163,11 @@ Usar los tokens de `theme/design-system.ts`:
 - `t.positive`, `t.negative` — verde/rojo para montos
 - `t.muted` — texto secundario
 - `t.surface` — superficie secundaria
+
+### Tokens nuevos
+- `t.accentBg`, `t.onAccent`, `t.scrim`, `t.shadow`, `categoryPalette`, `iconStroke`, `hit`, `motion`
+- Componentes base: `PressableScale`, `Skeleton`, `EmptyState`, `InlineError`, `CaptureBar`
+- Fechas locales: `services/dateKeys.ts`
 
 ### Tailwind classes
 NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, espaciado, y tipografia cuando sea practico:
