@@ -27,6 +27,8 @@ export function Icon({ name, size = 20, color: colorProp, strokeWidth }: Props) 
 
   const icons: Record<string, React.ReactNode> = {
 
+    'shield':          <Path {...p('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', color, sw)} />,
+    'sparkles':        <Path {...p('M5 3v4M3 5h4M19 3v4M17 5h4M12 3v2M10 12h4M12 17v2M8 12a4 4 0 008 0', color, sw)} />,
     'arrow-down-left': <Path {...p('M17 7l-10 10M17 17H7V7', color, sw)} />,
     'briefcase':       <>
                          <Rect x="3" y="8" width="18" height="13" rx="2" {...p(undefined, color, sw)} />
