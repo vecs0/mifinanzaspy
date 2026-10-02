@@ -21,10 +21,8 @@ import { llamarAIProxy } from '@/services/apiConfig';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
-import { colors, colorsDark, fonts } from '@/theme/design-system';
+import { colors, colorsDark, fonts, iconStroke, hit } from '@/theme/design-system';
 
-const GREEN       = '#3F8E5A';
-const GREEN_LIGHT = '#4db88a';
 
 interface Mensaje {
   id:    string;
@@ -83,10 +81,10 @@ function fmtGs(n: number): string {
   return `Gs ${Math.abs(n).toLocaleString('es-PY')}`;
 }
 
-function SparklesIcon({ size = 16, color = GREEN_LIGHT }: { size?: number; color?: string }) {
+function SparklesIcon({ size = 16, color }: { size?: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      stroke={color} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M5 3v4M3 5h4M19 3v4M17 5h4M12 3v2M10 12h4M12 17v2M8 12a4 4 0 008 0" />
     </Svg>
   );
@@ -95,7 +93,7 @@ function SparklesIcon({ size = 16, color = GREEN_LIGHT }: { size?: number; color
 function MicIcon({ color }: { color: string }) {
   return (
     <Svg width={17} height={17} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      stroke={color} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" />
       <Path d="M19 11a7 7 0 01-14 0M12 19v3" />
     </Svg>
@@ -122,14 +120,15 @@ function DotsVertIcon({ color }: { color: string }) {
 }
 
 function AIAvatar({ size = 24, dark }: { size?: number; dark: boolean }) {
-  const bg = dark ? '#1c2a1c' : 'rgba(63,142,90,0.1)';
+  const t = dark ? colorsDark : colors;
+  const bg = t.accentBg;
   const r  = Math.round(size * 0.29);
   return (
     <View style={{
       width: size, height: size, borderRadius: r,
       backgroundColor: bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
-      <SparklesIcon size={Math.round(size * 0.55)} color={GREEN_LIGHT} />
+      <SparklesIcon size={Math.round(size * 0.55)} color={t.accent} />
     </View>
   );
 }
@@ -153,18 +152,17 @@ function MiniBarChart({ data, t }: { data: { label: string; value: number }[]; t
   );
 }
 
-function InsightCard({ insight, t, dark }: { insight: InsightData; t: typeof colors; dark: boolean }) {
+function InsightCard({ insight, t }: { insight: InsightData; t: typeof colors }) {
   const over    = insight.pct >= 100;
-  const cardBg  = dark ? '#0d2218' : 'rgba(63,142,90,0.06)';
-  const cardBor = dark ? '#1a3a28' : 'rgba(63,142,90,0.18)';
-  const trackBg = dark ? '#1a3a28' : 'rgba(63,142,90,0.13)';
-  const barClr  = over ? t.negative : GREEN;
-  const pctClr  = over ? t.negative : GREEN_LIGHT;
-  const metaClr = dark ? '#6ba88f' : GREEN;
-  const lblClr  = dark ? GREEN_LIGHT : GREEN;
+  const cardBg  = t.surface;
+  const trackBg = t.hairline;
+  const barClr  = over ? t.negative : t.accent;
+  const pctClr  = over ? t.negative : t.ink;
+  const metaClr = t.ink2;
+  const lblClr  = t.ink2;
 
   return (
-    <View style={[ic.card, { backgroundColor: cardBg, borderColor: cardBor }]}>
+    <View style={[ic.card, { backgroundColor: cardBg }]}>
       <View style={ic.topRow}>
         <Text style={[ic.label, { color: lblClr }]}>{insight.label}</Text>
         <Text style={[ic.pct, { color: pctClr }]}>{insight.pct}%</Text>
@@ -178,9 +176,9 @@ function InsightCard({ insight, t, dark }: { insight: InsightData; t: typeof col
 }
 
 const ic = StyleSheet.create({
-  card:   { borderRadius: 12, borderWidth: 1, padding: 12 },
+  card:   { borderRadius: 12, padding: 12 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  label:  { fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui },
+  label:  { fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui },
   pct:    { fontSize: 20, fontWeight: '700', fontFamily: fonts.mono, letterSpacing: -0.5 },
   track:  { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
   fill:   { height: '100%', borderRadius: 3 },
@@ -353,10 +351,10 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList>(null);
   const cargado = useRef(false);
 
-  const aiBubbleBg   = dark ? '#1a1816' : t.card;
-  const aiBubbleTxt  = dark ? '#d8d5ce' : t.ink;
+  const aiBubbleBg   = t.card;
+  const aiBubbleTxt  = t.ink;
   const userBubbleBg = t.accent;
-  const userBubbleTxt = t.bg;
+  const userBubbleTxt = t.onAccent;
 
   useEffect(() => {
     if (voice.transcript && !voice.recognizing) setInput(voice.transcript);
@@ -485,7 +483,7 @@ export default function ChatScreen() {
         </View>
         {parsed.insight && (
           <View style={ch.insightWrap}>
-            <InsightCard insight={parsed.insight} t={t} dark={dark} />
+            <InsightCard insight={parsed.insight} t={t} />
           </View>
         )}
       </View>
@@ -507,20 +505,23 @@ export default function ChatScreen() {
                 style={ch.hdrAvatar}
                 resizeMode="cover"
               />
-              <View style={[ch.statusDot, { backgroundColor: GREEN_LIGHT, borderColor: t.bg }]} />
+              <View style={[ch.statusDot, { backgroundColor: t.positive, borderColor: t.bg }]} />
             </View>
             <View>
               <Text style={[ch.hdrName, { color: t.ink }]}>Asesor</Text>
               <View style={ch.statusRow}>
-                <View style={[ch.statusDotInline, { backgroundColor: GREEN_LIGHT }]} />
-                <Text style={[ch.hdrStatus, { color: GREEN_LIGHT }]}>Conectado · ve todo tu historial</Text>
+                <View style={[ch.statusDotInline, { backgroundColor: t.positive }]} />
+                <Text style={[ch.hdrStatus, { color: t.positive }]}>Conectado · ve todo tu historial</Text>
               </View>
             </View>
           </View>
           <TouchableOpacity
             style={[ch.menuBtn, { backgroundColor: t.surface }]}
             onPress={() => setMenuOpen(!menuOpen)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={hit}
+            accessibilityRole="button"
+            accessibilityLabel="Más opciones del chat"
+            accessibilityState={{ expanded: menuOpen }}
           >
             <DotsVertIcon color={t.ink2} />
           </TouchableOpacity>
@@ -528,19 +529,20 @@ export default function ChatScreen() {
 
         {menuOpen && (
           <View style={[ch.dropdown, {
-            backgroundColor: dark ? '#1e1b17' : '#FFFFFF',
+            backgroundColor: t.card,
             borderColor: t.hairline,
+            shadowColor: t.shadow,
           }]}>
             <TouchableOpacity style={ch.dropItem} onPress={iniciarNuevoChat} activeOpacity={0.7}>
-              <View style={[ch.dropIco, { backgroundColor: dark ? 'rgba(63,142,90,0.12)' : 'rgba(63,142,90,0.08)' }]}>
-                <SparklesIcon size={13} color={GREEN_LIGHT} />
+              <View style={[ch.dropIco, { backgroundColor: t.accentBg }]}>
+                <SparklesIcon size={16} color={t.accent} />
               </View>
               <Text style={[ch.dropTxt, { color: t.ink }]}>Nuevo chat</Text>
             </TouchableOpacity>
             <View style={[ch.dropSep, { backgroundColor: t.hairline }]} />
             <TouchableOpacity style={ch.dropItem} onPress={() => { setShowHistorial(true); setMenuOpen(false); }} activeOpacity={0.7}>
-              <View style={[ch.dropIco, { backgroundColor: dark ? '#2a2824' : '#F0EDE8' }]}>
-                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none"
+              <View style={[ch.dropIco, { backgroundColor: t.surface }]}>
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none"
                   stroke={t.ink2} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   <Path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                   <Path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
@@ -565,7 +567,7 @@ export default function ChatScreen() {
                         onPress={() => confirmarEliminar(Array.from(selected))}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Text style={{ fontSize: 13, color: '#e05555', fontWeight: '600', fontFamily: fonts.ui }}>Eliminar</Text>
+                        <Text style={{ fontSize: 13, color: t.negative, fontWeight: '600', fontFamily: fonts.ui }}>Eliminar</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
@@ -583,7 +585,7 @@ export default function ChatScreen() {
                     onPress={() => { setShowHistorial(false); setSelMode(false); setSelected(new Set()); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={{ fontSize: 13, color: GREEN_LIGHT, fontWeight: '600', fontFamily: fonts.ui }}>Cerrar</Text>
+                    <Text style={{ fontSize: 13, color: t.accent, fontWeight: '600', fontFamily: fonts.ui }}>Cerrar</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -604,7 +606,7 @@ export default function ChatScreen() {
                     <TouchableOpacity
                       style={[
                         ch.histItem,
-                        { backgroundColor: t.card, borderColor: isSel ? GREEN : t.hairline },
+                        { backgroundColor: t.card, borderColor: isSel ? t.accent : t.hairline },
                       ]}
                       onPress={() => selMode ? toggleSeleccion(item.id) : cargarChat(item.id)}
                       onLongPress={() => { setSelMode(true); setSelected(new Set([item.id])); }}
@@ -613,10 +615,10 @@ export default function ChatScreen() {
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                         {selMode ? (
-                          <View style={[ch.checkbox, { borderColor: isSel ? GREEN : t.hairline, backgroundColor: isSel ? GREEN : 'transparent' }]}>
+                          <View style={[ch.checkbox, { borderColor: isSel ? t.accent : t.hairline, backgroundColor: isSel ? t.accent : 'transparent' }]}>
                             {isSel && (
                               <Svg width={10} height={10} viewBox="0 0 10 10">
-                                <Path d="M1.5 5L4 7.5L8.5 2.5" stroke="#fff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                                <Path d="M1.5 5L4 7.5L8.5 2.5" stroke={t.onAccent} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
                               </Svg>
                             )}
                           </View>
@@ -660,7 +662,7 @@ export default function ChatScreen() {
                 <View style={ch.aiRow}>
                   <AIAvatar size={24} dark={dark} />
                   <View style={[ch.bubble, ch.aiBubble, { backgroundColor: aiBubbleBg, paddingHorizontal: 16, paddingVertical: 12 }]}>
-                    <ActivityIndicator size="small" color={GREEN_LIGHT} />
+                    <ActivityIndicator size="small" color={t.accent} />
                   </View>
                 </View>
               ) : null}
@@ -677,7 +679,7 @@ export default function ChatScreen() {
                 {SUGERENCIAS.map(sug => (
                   <TouchableOpacity
                     key={sug}
-                    style={[ch.suggestChip, { backgroundColor: dark ? '#141412' : t.card, borderColor: t.hairline }]}
+                    style={[ch.suggestChip, { backgroundColor: t.card, borderColor: t.hairline }]}
                     onPress={() => setInput(sug)}
                     activeOpacity={0.7}
                   >
@@ -689,7 +691,7 @@ export default function ChatScreen() {
 
             <View style={[ch.inputBar, { borderTopColor: t.hairline, backgroundColor: t.bg }]}>
               <View style={[ch.inputWrap, {
-                backgroundColor: dark ? '#181816' : t.card,
+                backgroundColor: t.card,
                 borderColor: t.hairline,
               }]}>
                 <TextInput
@@ -697,18 +699,21 @@ export default function ChatScreen() {
                   value={input}
                   onChangeText={setInput}
                   placeholder="Preguntale a tu asesor..."
-                  placeholderTextColor={t.ink3}
+                  placeholderTextColor={t.muteText}
                   multiline
+                  accessibilityLabel="Mensaje para el asesor"
                   maxLength={500}
                   onSubmitEditing={enviar}
                   returnKeyType="send"
                 />
                 <TouchableOpacity
-                  style={[ch.micBtn, { backgroundColor: voice.recognizing ? '#A8401F' : 'transparent' }]}
+                  style={[ch.micBtn, { backgroundColor: voice.recognizing ? t.negative : 'transparent' }]}
                   onPress={() => voice.recognizing ? voice.stop() : voice.start()}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  hitSlop={hit}
+                  accessibilityRole="button"
+                  accessibilityLabel={voice.recognizing ? 'Detener dictado' : 'Dictar mensaje por voz'}
                 >
-                  <MicIcon color={voice.recognizing ? '#fff' : t.ink3} />
+                  <MicIcon color={voice.recognizing ? t.onAccent : t.ink2} />
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -718,8 +723,11 @@ export default function ChatScreen() {
                 onPress={enviar}
                 disabled={!input.trim() || enviando}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Enviar mensaje"
+                accessibilityState={{ disabled: !input.trim() || enviando }}
               >
-                <SendIcon color={input.trim() && !enviando ? t.bg : t.ink3} />
+                <SendIcon color={input.trim() && !enviando ? t.onAccent : t.ink2} />
               </TouchableOpacity>
             </View>
           </>
@@ -733,15 +741,15 @@ export default function ChatScreen() {
         onRequestClose={() => setConfirmIds(null)}
       >
         <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 32 }}
+          style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', alignItems: 'center', padding: 32 }}
           activeOpacity={1}
           onPress={() => setConfirmIds(null)}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[ch.confirmCard, { backgroundColor: t.card, borderColor: t.hairline }]}>
-              <View style={[ch.confirmIcoWrap, { backgroundColor: dark ? 'rgba(224,85,85,0.12)' : 'rgba(224,85,85,0.08)' }]}>
+            <View style={[ch.confirmCard, { backgroundColor: t.card, borderColor: t.hairline, shadowColor: t.shadow }]}>
+              <View style={[ch.confirmIcoWrap, { backgroundColor: t.negativeBg }]}>
                 <Svg width={22} height={22} viewBox="0 0 24 24">
-                  <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="#e05555" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke={t.negative} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round" fill="none" />
                 </Svg>
               </View>
               <Text style={[ch.confirmTitle, { color: t.ink }]}>
@@ -766,7 +774,7 @@ export default function ChatScreen() {
                   onPress={() => { const ids = confirmIds ?? []; setConfirmIds(null); eliminarChats(ids); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[ch.confirmBtnTxt, { color: '#e05555', fontWeight: '600' }]}>Eliminar</Text>
+                  <Text style={[ch.confirmBtnTxt, { color: t.negative, fontWeight: '600' }]}>Eliminar</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -784,12 +792,12 @@ const ch = StyleSheet.create({
   statusRow:       { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   statusDotInline: { width: 6, height: 6, borderRadius: 3 },
   hdrName:         { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui, letterSpacing: -0.2 },
-  hdrStatus:       { fontSize: 11, fontFamily: fonts.ui },
-  menuBtn:         { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  dropdown:        { position: 'absolute', top: 64, right: 16, borderRadius: 14, borderWidth: 1, overflow: 'hidden', zIndex: 100, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, elevation: 10, minWidth: 200 },
-  dropItem:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  dropIco:         { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  dropTxt:         { fontSize: 13.5, fontWeight: '500', fontFamily: fonts.ui },
+  hdrStatus:       { fontSize: 12, fontFamily: fonts.ui },
+  menuBtn:         { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  dropdown:        { position: 'absolute', top: 64, right: 16, borderRadius: 14, borderWidth: 1, overflow: 'hidden', zIndex: 100, shadowOpacity: 0.12, shadowRadius: 16, elevation: 10, minWidth: 200 },
+  dropItem:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 48 },
+  dropIco:         { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  dropTxt:         { fontSize: 14, fontWeight: '500', fontFamily: fonts.ui },
   dropSep:         { height: StyleSheet.hairlineWidth, marginHorizontal: 14 },
   aiRow:           { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   userRow:         { flexDirection: 'row', justifyContent: 'flex-end' },
@@ -800,19 +808,19 @@ const ch = StyleSheet.create({
   insightWrap:     { marginLeft: 32 },
   histItem:        { padding: 14, borderRadius: 12, borderWidth: 1 },
   checkbox:        { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  confirmCard:     { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', width: 300, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 24, elevation: 12 },
+  confirmCard:     { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', width: 300, shadowOpacity: 0.18, shadowRadius: 24, elevation: 12 },
   confirmIcoWrap:  { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 24, marginBottom: 12 },
   confirmTitle:    { fontSize: 16, fontWeight: '700', fontFamily: fonts.ui, textAlign: 'center', marginBottom: 6, paddingHorizontal: 20 },
   confirmBody:     { fontSize: 13, fontFamily: fonts.ui, textAlign: 'center', lineHeight: 19, paddingHorizontal: 24, paddingBottom: 20, opacity: 0.75 },
   confirmDivider:  { height: StyleSheet.hairlineWidth },
   confirmBtns:     { flexDirection: 'row' },
-  confirmBtn:      { flex: 1, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
+  confirmBtn:      { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   confirmBtnTxt:   { fontSize: 15, fontFamily: fonts.ui },
-  suggestChip:     { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, flexShrink: 0 },
-  suggestTxt:      { fontSize: 12, fontFamily: fonts.ui, fontWeight: '500' },
+  suggestChip:     { paddingHorizontal: 16, minHeight: 44, justifyContent: 'center', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, flexShrink: 0 },
+  suggestTxt:      { fontSize: 13, fontFamily: fonts.ui, fontWeight: '500' },
   inputBar:        { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 14, borderTopWidth: StyleSheet.hairlineWidth },
-  inputWrap:       { flex: 1, flexDirection: 'row', alignItems: 'flex-end', borderRadius: 24, borderWidth: 1, paddingLeft: 16, paddingRight: 6, paddingVertical: 6, minHeight: 44 },
+  inputWrap:       { flex: 1, flexDirection: 'row', alignItems: 'flex-end', borderRadius: 24, borderWidth: 1, paddingLeft: 16, paddingRight: 2, paddingVertical: 2, minHeight: 48 },
   input:           { flex: 1, fontSize: 14, lineHeight: 20, fontFamily: fonts.ui, maxHeight: 90, paddingVertical: 4 },
-  micBtn:          { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  sendBtn:         { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  micBtn:          { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  sendBtn:         { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 });
