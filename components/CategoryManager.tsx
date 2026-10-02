@@ -15,17 +15,12 @@ import { CATEGORIAS } from '@/constants/categories';
 import { getDB, getCategoriasOcultas, toggleCategoriaOculta } from '@/services/database';
 import { Icon } from '@/components/Icon';
 import { useThemeCtx } from '@/services/ThemeContext';
-import { colors, colorsDark, fonts, borderRadius as br } from '@/theme/design-system';
+import { colors, colorsDark, fonts, borderRadius as br, categoryPalette, hit } from '@/theme/design-system';
 import type { Categoria } from '@/types/finance';
 
 type Filtro = 'todas' | 'ingreso' | 'egreso' | 'mixto';
 
-const COLORES = [
-  '#3F8E5A', '#B65A1F', '#C84A4A', '#8B5CF6',
-  '#0EA5E9', '#EAB308', '#06B6D4', '#E11D48',
-  '#A855F7', '#84CC16', '#EC4899', '#6B7280',
-  '#2563EB', '#7C2D12', '#0F766E',
-];
+const COLORES = categoryPalette;
 
 const CAT_INGRESO = CATEGORIAS.filter(c => c.tipo === 'ingreso');
 const CAT_MIXTO   = CATEGORIAS.filter(c => c.tipo === 'mixto');
@@ -37,42 +32,30 @@ interface Props {
   onCambio: () => void;
 }
 
-function chipActiveStyle(tipo: string, t: typeof colors, dark: boolean) {
-  if (tipo === 'ingreso') return {
-    bg: t.positiveBg,
-    border: dark ? 'rgba(63,142,90,0.40)' : 'rgba(63,142,90,0.35)',
-    toggleColor: t.positive,
-  };
-  if (tipo === 'egreso') return {
-    bg: t.negativeBg,
-    border: dark ? 'rgba(168,64,31,0.40)' : 'rgba(168,64,31,0.35)',
-    toggleColor: t.negative,
-  };
-  return {
-    bg: dark ? 'rgba(107,114,128,0.18)' : 'rgba(107,114,128,0.10)',
-    border: 'rgba(107,114,128,0.30)',
-    toggleColor: '#6B7280',
-  };
+function chipActiveStyle(tipo: string, t: typeof colors) {
+  if (tipo === 'ingreso') return { bg: t.positiveBg, border: t.positive, toggleColor: t.positive };
+  if (tipo === 'egreso') return { bg: t.negativeBg, border: t.negative, toggleColor: t.negative };
+  return { bg: t.surface, border: t.muted, toggleColor: t.muted };
 }
 
-function MiniToggle({ on, color }: { on: boolean; color: string }) {
+function MiniToggle({ on, color, off, knob }: { on: boolean; color: string; off: string; knob: string }) {
   return (
     <View style={{
       width: 20, height: 12, borderRadius: 6,
-      backgroundColor: on ? color : 'rgba(128,128,128,0.25)',
+      backgroundColor: on ? color : off,
       flexDirection: 'row', alignItems: 'center',
       paddingHorizontal: 1,
       justifyContent: on ? 'flex-end' : 'flex-start',
     }}>
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' }} />
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: knob }} />
     </View>
   );
 }
 
-function CatChip({ cat, on, dark, t, onToggle }: {
-  cat: Categoria; on: boolean; dark: boolean; t: typeof colors; onToggle: () => void;
+function CatChip({ cat, on, t, onToggle }: {
+  cat: Categoria; on: boolean; t: typeof colors; onToggle: () => void;
 }) {
-  const cfg = chipActiveStyle(cat.tipo, t, dark);
+  const cfg = chipActiveStyle(cat.tipo, t);
   return (
     <TouchableOpacity
       style={{
@@ -80,25 +63,28 @@ function CatChip({ cat, on, dark, t, onToggle }: {
         borderRadius: 12, padding: 10,
         alignItems: 'center', gap: 6,
         borderWidth: 1.5, position: 'relative',
-        backgroundColor: on ? cfg.bg : (dark ? 'rgba(241,237,230,0.04)' : t.surface),
+        backgroundColor: on ? cfg.bg : t.surface,
         borderColor: on ? cfg.border : t.hairline,
       }}
       onPress={onToggle}
       activeOpacity={0.75}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={cat.nombre}
     >
       <View style={{ position: 'absolute', top: 6, right: 6 }}>
-        <MiniToggle on={on} color={cfg.toggleColor} />
+        <MiniToggle on={on} color={cfg.toggleColor} off={t.muteText} knob={t.onAccent} />
       </View>
       <View style={{
         width: 32, height: 32, borderRadius: 9,
         alignItems: 'center', justifyContent: 'center',
-        backgroundColor: on ? `${cat.tinte}22` : (dark ? 'rgba(241,237,230,0.06)' : 'rgba(24,21,19,0.06)'),
+        backgroundColor: on ? `${cat.tinte}22` : t.hairline,
         marginTop: 4,
       }}>
-        <Icon name={cat.icono} size={16} color={on ? cat.tinte : t.ink3} />
+        <Icon name={cat.icono} size={16} color={on ? cat.tinte : t.ink2} />
       </View>
       <Text
-        style={{ fontSize: 10, textAlign: 'center', lineHeight: 13, fontFamily: fonts.ui, fontWeight: '500', color: on ? t.ink : t.ink3 }}
+        style={{ fontSize: 11, textAlign: 'center', lineHeight: 14, fontFamily: fonts.ui, fontWeight: '500', color: on ? t.ink : t.ink2 }}
         numberOfLines={2}
       >
         {cat.nombre}
@@ -107,7 +93,7 @@ function CatChip({ cat, on, dark, t, onToggle }: {
   );
 }
 
-function useStyles(t: typeof colors, dark: boolean) {
+function useStyles(t: typeof colors) {
   return StyleSheet.create({
     handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: t.hairline, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
     hdr: {
@@ -116,7 +102,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     },
     title: { fontSize: 18, fontWeight: '700', color: t.ink, fontFamily: fonts.ui },
     filterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingBottom: 14, flexWrap: 'wrap' },
-    filterTab: { paddingHorizontal: 13, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+    filterTab: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 22, borderWidth: 1 },
     filterTabText: { fontSize: 12, fontWeight: '500', fontFamily: fonts.ui },
     sectionRow: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -140,8 +126,8 @@ function useStyles(t: typeof colors, dark: boolean) {
       borderWidth: 1, borderColor: t.hairline,
     },
     formCard: {
-      padding: 16, borderRadius: br.md, backgroundColor: t.card,
-      borderWidth: 1, borderColor: t.accent, gap: 10,
+      padding: 16, borderRadius: br.md, backgroundColor: t.surface,
+      gap: 12,
     },
     label: {
       fontSize: 11, fontWeight: '600', color: t.ink3,
@@ -151,8 +137,8 @@ function useStyles(t: typeof colors, dark: boolean) {
       borderWidth: 1, borderColor: t.hairline, borderRadius: br.sm,
       padding: 10, fontSize: 13, color: t.ink, backgroundColor: t.bg, fontFamily: fonts.ui,
     },
-    radio: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: t.hairline },
-    btn: { paddingVertical: 12, borderRadius: br.sm, alignItems: 'center' },
+    radio: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 22, borderWidth: 1, borderColor: t.hairline },
+    btn: { minHeight: 48, justifyContent: 'center', borderRadius: br.sm, alignItems: 'center' },
     microNote: { fontSize: 10.5, color: t.ink3, textAlign: 'center', lineHeight: 16, fontFamily: fonts.ui },
   });
 }
@@ -160,7 +146,7 @@ function useStyles(t: typeof colors, dark: boolean) {
 export default function CategoryManager({ visible, onClose, onCambio }: Props) {
   const { dark } = useThemeCtx();
   const t = dark ? colorsDark : colors;
-  const s = useStyles(t, dark);
+  const s = useStyles(t);
 
   const [ocultas, setOcultas] = useState<Set<string>>(new Set());
   const [filtro, setFiltro] = useState<Filtro>('todas');
@@ -271,15 +257,15 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
     if (key === 'todas') return t.ink;
     if (key === 'ingreso') return t.positiveBg;
     if (key === 'egreso') return t.negativeBg;
-    return dark ? 'rgba(107,114,128,0.18)' : 'rgba(107,114,128,0.10)';
+    return t.surface;
   }
 
   function tabText(key: Filtro) {
-    if (filtro !== key) return t.ink3;
+    if (filtro !== key) return t.ink2;
     if (key === 'todas') return t.bg;
     if (key === 'ingreso') return t.positive;
     if (key === 'egreso') return t.negative;
-    return '#6B7280';
+    return t.muted;
   }
 
   function tabBorder(key: Filtro) {
@@ -287,7 +273,7 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
     if (key === 'todas') return t.ink;
     if (key === 'ingreso') return t.positive;
     if (key === 'egreso') return t.negative;
-    return '#6B7280';
+    return t.muted;
   }
 
   return (
@@ -297,7 +283,7 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
 
         <View style={s.hdr}>
           <Text style={s.title}>Gestionar categorías</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={onClose} hitSlop={hit} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel="Cerrar">
             <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
               <Path d="M18 6L6 18M6 6l12 12" stroke={t.ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
@@ -326,7 +312,7 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
               </View>
               <View style={s.grid}>
                 {CAT_INGRESO.map(c => (
-                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} dark={dark} t={t} onToggle={() => handleToggle(c.id)} />
+                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} t={t} onToggle={() => handleToggle(c.id)} />
                 ))}
               </View>
             </>
@@ -340,7 +326,7 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
               </View>
               <View style={s.grid}>
                 {CAT_MIXTO.map(c => (
-                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} dark={dark} t={t} onToggle={() => handleToggle(c.id)} />
+                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} t={t} onToggle={() => handleToggle(c.id)} />
                 ))}
               </View>
             </>
@@ -354,7 +340,7 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
               </View>
               <View style={s.grid}>
                 {CAT_EGRESO.map(c => (
-                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} dark={dark} t={t} onToggle={() => handleToggle(c.id)} />
+                  <CatChip key={c.id} cat={c} on={!ocultas.has(c.id)} t={t} onToggle={() => handleToggle(c.id)} />
                 ))}
               </View>
             </>
@@ -468,16 +454,20 @@ export default function CategoryManager({ visible, onClose, onCambio }: Props) {
                       borderWidth: tinte === c ? 3 : 0, borderColor: t.ink,
                     }}
                     onPress={() => setTinte(c)}
+                    hitSlop={hit}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: tinte === c }}
+                    accessibilityLabel={`Color ${c}`}
                   />
                 ))}
               </View>
 
               <TouchableOpacity
-                style={[s.btn, { backgroundColor: nombre.trim() ? t.accent : t.ink3 }]}
+                style={[s.btn, { backgroundColor: nombre.trim() ? t.accent : t.muteText }]}
                 onPress={guardar}
                 disabled={!nombre.trim()}
               >
-                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', fontFamily: fonts.ui }}>
+                <Text style={{ color: t.onAccent, fontSize: 14, fontWeight: '600', fontFamily: fonts.ui }}>
                   {editandoId ? 'Guardar cambios' : 'Crear categoría'}
                 </Text>
               </TouchableOpacity>

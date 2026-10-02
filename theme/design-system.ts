@@ -87,6 +87,13 @@ export const borderRadius = {
   full: 999,
 };
 
+export const categoryPalette = [
+  '#3F8E5A', '#B65A1F', '#C84A4A', '#8B5CF6',
+  '#0EA5E9', '#EAB308', '#06B6D4', '#E11D48',
+  '#A855F7', '#84CC16', '#EC4899', '#6B7280',
+  '#2563EB', '#7C2D12', '#0F766E',
+];
+
 export const iconStroke = 1.75;
 
 export const hit = { top: 12, bottom: 12, left: 12, right: 12 };
