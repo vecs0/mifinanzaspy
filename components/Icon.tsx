@@ -5,6 +5,8 @@
  * Depende de: react-native-svg
  */
 import { View } from 'react-native';
+import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark, iconStroke } from '@/theme/design-system';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 
 interface Props {
@@ -14,11 +16,13 @@ interface Props {
   strokeWidth?: number;
 }
 
-function p(d?: string, color?: string, sw?: number) {
-  return { d, stroke: color ?? '#181513', strokeWidth: sw ?? 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+function p(d: string | undefined, color: string, sw?: number) {
+  return { d, stroke: color, strokeWidth: sw ?? iconStroke, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
 }
 
-export function Icon({ name, size = 20, color = '#181513', strokeWidth }: Props) {
+export function Icon({ name, size = 20, color: colorProp, strokeWidth }: Props) {
+  const { dark } = useThemeCtx();
+  const color = colorProp ?? (dark ? colorsDark : colors).ink;
   const sw = strokeWidth;
 
   const icons: Record<string, React.ReactNode> = {

@@ -8,6 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { Icon } from '@/components/Icon';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
 
 interface Props {
   categoriaId: string;
@@ -21,9 +22,10 @@ const LABEL_SIZE = { sm: 10, md: 11, lg: 12 };
 
 export function CategoriaChip({ categoriaId, size = 'md', showLabel }: Props) {
   const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
   const cat = CATEGORIA_POR_ID[categoriaId];
   const dim = DIMS[size];
-  const tinte = cat?.tinte ?? '#6B7280';
+  const tinte = cat?.tinte ?? t.muted;
 
   return (
     <View style={[s.row, { gap: 6 }]}>
@@ -50,7 +52,7 @@ export function CategoriaChip({ categoriaId, size = 'md', showLabel }: Props) {
             s.label,
             {
               fontSize: LABEL_SIZE[size],
-              color: dark ? '#C5BDB5' : '#181513',
+              color: t.ink,
             },
           ]}
           numberOfLines={1}

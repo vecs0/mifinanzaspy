@@ -158,7 +158,7 @@ export function FloatingNotificationProvider({ children }: { children: React.Rea
         <Text style={styles.texto} numberOfLines={2}>{notif.mensaje}</Text>
         <TouchableOpacity onPress={ocultar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Svg width={16} height={16} viewBox="0 0 16 16">
-            <Path d="M4 4l8 8M12 4l-8 8" fill="none" stroke={tinte || '#9B8E84'} strokeWidth={1.8} strokeLinecap="round" />
+            <Path d="M4 4l8 8M12 4l-8 8" fill="none" stroke={tinte} strokeWidth={1.8} strokeLinecap="round" />
           </Svg>
         </TouchableOpacity>
       </Animated.View>
