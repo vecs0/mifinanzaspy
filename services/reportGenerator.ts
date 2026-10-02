@@ -89,7 +89,7 @@ export function generarReporteDiario(fecha?: string): ReporteDiario {
 
   const rows = db.getAllSync<{ tipo: string; monto: number; categoriaId: string }>(
     `SELECT tipo, monto, categoria_id AS categoriaId
-     FROM transacciones WHERE date(fecha) = ? AND procesado = 1`,
+     FROM transacciones WHERE date(fecha) = ?`,
     [dia],
   );
 
@@ -112,7 +112,7 @@ export function generarReporteDiario(fecha?: string): ReporteDiario {
   ayer.setDate(ayer.getDate() - 1);
   const ayerStr = isoFecha(ayer);
   const ayerRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) = ? AND monto < 0 AND procesado = 1',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) = ? AND monto < 0',
     [ayerStr],
   );
   const egresosAyer = ayerRow?.total ?? 0;
@@ -133,7 +133,11 @@ export function generarReporteSemanal(semana?: string): ReporteSemanal {
   const db  = getDB();
   const hoy = new Date();
   const lunes = semana
-    ? (() => { const d = new Date(semana + '-01'); return lunesdeSemana(d); })()
+    ? (() => { 
+        const [year, week] = semana.split('-W').map(Number);
+        const d = new Date(year, 0, 1 + (week - 1) * 7);
+        return lunesdeSemana(d); 
+      })()
     : lunesdeSemana(hoy);
 
   const domingo = new Date(lunes);
@@ -150,7 +154,7 @@ export function generarReporteSemanal(semana?: string): ReporteSemanal {
 
   const rows = db.getAllSync<{ fecha: string; monto: number; categoriaId: string; bancoId: string }>(
     `SELECT date(fecha) AS fecha, monto, categoria_id AS categoriaId, banco_id AS bancoId
-     FROM transacciones WHERE date(fecha) BETWEEN ? AND ? AND procesado = 1`,
+     FROM transacciones WHERE date(fecha) BETWEEN ? AND ?`,
     [fechaInicio, fechaFin],
   );
 
@@ -181,7 +185,7 @@ export function generarReporteSemanal(semana?: string): ReporteSemanal {
   const lunesAnterior = new Date(lunes); lunesAnterior.setDate(lunes.getDate() - 7);
   const domingoAnterior = new Date(lunesAnterior); domingoAnterior.setDate(lunesAnterior.getDate() + 6);
   const prevRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) BETWEEN ? AND ? AND monto < 0 AND procesado = 1',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) BETWEEN ? AND ? AND monto < 0',
     [isoFecha(lunesAnterior), isoFecha(domingoAnterior)],
   );
   const egresosPrev = prevRow?.total ?? 0;
@@ -209,7 +213,7 @@ export function generarReporteMensual(mes?: string): ReporteMensual {
 
   const rows = db.getAllSync<{ fecha: string; monto: number; categoriaId: string; bancoId: string }>(
     `SELECT date(fecha) AS fecha, monto, categoria_id AS categoriaId, banco_id AS bancoId
-     FROM transacciones WHERE strftime('%Y-%m', fecha) = ? AND procesado = 1`,
+     FROM transacciones WHERE strftime('%Y-%m', fecha) = ?`,
     [key],
   );
 
@@ -248,7 +252,7 @@ export function generarReporteMensual(mes?: string): ReporteMensual {
   const mesAnteriorDate = new Date(anio, numMes - 2, 1);
   const mesAnteriorKey  = mesAnteriorDate.toISOString().slice(0, 7);
   const prevRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE strftime(\'%Y-%m\', fecha) = ? AND monto < 0 AND procesado = 1',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE strftime(\'%Y-%m\', fecha) = ? AND monto < 0',
     [mesAnteriorKey],
   );
   const egresosPrev = prevRow?.total ?? 0;

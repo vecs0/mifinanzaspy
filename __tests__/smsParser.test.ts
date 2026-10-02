@@ -76,7 +76,7 @@ describe('parsearSMS', () => {
       saldoPost: 2350000,
       categoriaId: 'supermercado',
       fuente: 'sms',
-      fecha: new Date(FECHA).toISOString(),
+      fecha: '2026-06-10',
     });
     expect(Number.isInteger(r.transaccion!.monto)).toBe(true);
     expect(r.confianza).toBe('alta');
@@ -153,7 +153,7 @@ describe('parsearSMS', () => {
 
   it('acepta fecha ISO string', async () => {
     const r = await parsearSMS('ITAU', SMS_ITAU_DEBITO_TILDE, '2026-06-10T12:00:00.000Z');
-    expect(r.transaccion!.fecha).toBe('2026-06-10T12:00:00.000Z');
+    expect(r.transaccion!.fecha).toBe('2026-06-10');
   });
 
   it('monto cero se rechaza', async () => {
@@ -207,5 +207,12 @@ describe('parsearSMSSincrono', () => {
       'cta-1',
     );
     expect(t!.monto).toBe(300000);
+  });
+});
+
+describe('parsearMontoGuarani decimales', () => {
+  it('redondea a entero guaranies', () => {
+    expect(parsearMontoGuarani('1.500,50')).toBe(1501);
+    expect(parsearMontoGuarani('1.500,00')).toBe(1500);
   });
 });

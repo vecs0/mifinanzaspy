@@ -45,7 +45,7 @@ describe('encryption', () => {
     const a = await cargar(KEY_A);
     const c = await a.encrypt('secreto');
     const b = await cargar(KEY_B);
-    await expect(b.decrypt(c)).resolves.toBeNull();
+    await expect(b.decrypt(c)).rejects.toThrow('Decryption failed');
   });
 
   it('ciphertext alterado es detectado', async () => {
@@ -54,10 +54,10 @@ describe('encryption', () => {
     const raw = Buffer.from(c.slice(3), 'base64');
     raw[raw.length - 1] ^= 0x01;
     const tampered = 'v2:' + raw.toString('base64');
-    await expect(decrypt(tampered)).resolves.toBeNull();
+    await expect(decrypt(tampered)).rejects.toThrow('Decryption failed');
     raw[raw.length - 1] ^= 0x01;
     raw[30] ^= 0xff;
-    await expect(decrypt('v2:' + raw.toString('base64'))).resolves.toBeNull();
+    await expect(decrypt('v2:' + raw.toString('base64'))).rejects.toThrow('Decryption failed');
   });
 
   it('nonce alterado es detectado', async () => {
@@ -65,21 +65,12 @@ describe('encryption', () => {
     const c = (await encrypt('secreto'))!;
     const raw = Buffer.from(c.slice(3), 'base64');
     raw[0] ^= 0xff;
-    await expect(decrypt('v2:' + raw.toString('base64'))).resolves.toBeNull();
+    await expect(decrypt('v2:' + raw.toString('base64'))).rejects.toThrow('Decryption failed');
   });
 
-  it('payload v2 truncado no lanza', async () => {
+  it('payload v2 truncado lanza error', async () => {
     const { decrypt } = await cargar(KEY_A);
-    await expect(decrypt('v2:AAAA')).resolves.toBeNull();
-  });
-
-  it('retrocompatibilidad XOR legado', async () => {
-    const { decrypt } = await cargar(KEY_A);
-    const key = new TextEncoder().encode(KEY_A);
-    const bytes = new TextEncoder().encode('dato viejo');
-    const xored = bytes.map((b, i) => b ^ key[i % key.length]);
-    const legado = Buffer.from(xored).toString('base64');
-    await expect(decrypt(legado)).resolves.toBe('dato viejo');
+    await expect(decrypt('v2:AAAA')).rejects.toThrow();
   });
 
   it('genera y persiste una clave si no existe', async () => {

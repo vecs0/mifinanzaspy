@@ -6,68 +6,7 @@
  */
 import { llamarAIProxy } from '@/services/apiConfig';
 import type { PreviewItem } from '@/services/importService';
-
-
-function limpiarJSON(texto: string): string {
-  return texto
-    .replace(/"\s*\.\s*/g, '":"')
-    .replace(/\.\s*:/g, ':')
-    .replace(/"\s*"/g, '","')
-    .replace(/\(\s*/g, '{')
-    .replace(/\)\s*\]/g, '}]')
-    .replace(/\)\s*[,\s]*/g, '},')
-    .replace(/\)\s*$/g, '}')
-    .replace(/'/g, '"')
-    .replace(/,(\s*[}\]])/g, '$1')
-    .replace(/,\s*$/, '');
-}
-
-function findClose(src: string, from: number): number {
-  let depth = 0, inStr = false, escape = false;
-  for (let i = from; i < src.length; i++) {
-    const ch = src[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (ch === '[' || ch === '{') { depth++; continue; }
-    if (ch === ']' || ch === '}') { if (--depth === 0) return i; }
-  }
-  return -1;
-}
-
-function extractElements(src: string, arrayStart: number): any[] {
-  const items: any[] = [];
-  let pos = arrayStart + 1;
-  while (pos < src.length) {
-    while (pos < src.length && src[pos] !== '{' && src[pos] !== '[') {
-      if (src[pos] === ']' && items.length > 0) return items;
-      pos++;
-    }
-    if (pos >= src.length) break;
-    const closeIdx = findClose(src, pos);
-    if (closeIdx === -1) break;
-    try { items.push(JSON.parse(src.slice(pos, closeIdx + 1))); } catch { console.warn('[BatchImport] Error'); }
-    pos = closeIdx + 1;
-  }
-  return items;
-}
-
-function extraerJSONArray(texto: string): any[] | null {
-  for (const src of [texto.trim(), limpiarJSON(texto.trim())]) {
-    const start = src.indexOf('[');
-    if (start === -1) continue;
-    const close = findClose(src, start);
-    const target = close !== -1 ? src.slice(start, close + 1) : src.slice(start);
-    try {
-      const p = JSON.parse(close !== -1 ? target : target + ']');
-      if (Array.isArray(p) && p.length > 0) return p;
-    } catch { console.warn('[BatchImport] Error'); }
-    const elems = extractElements(src, start);
-    if (elems.length > 0) return elems;
-  }
-  return null;
-}
+import { extraerJSONArray } from '@/services/jsonUtils';
 
 function normalizeItem(p: any): PreviewItem | null {
   let monto: number, descripcion: string, fecha: string;

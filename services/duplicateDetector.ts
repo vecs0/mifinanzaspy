@@ -43,11 +43,12 @@ export function detectarDuplicados(): Duplicado[] {
       if (a.id === b.id) continue;
 
       let score = 0;
-      if (Math.abs(a.monto) === Math.abs(b.monto)) score += 40;
-      if (a.bancoId === b.bancoId) score += 20;
+      if (Math.abs(a.monto) === Math.abs(b.monto)) score += 30;
+      if (a.bancoId === b.bancoId) score += 15;
       if (a.cuentaId === b.cuentaId) score += 10;
-      if (a.descripcion && b.descripcion && a.descripcion.toLowerCase() === b.descripcion.toLowerCase()) score += 20;
-      if (Math.abs(new Date(a.fecha).getTime() - new Date(b.fecha).getTime()) < 86400000) score += 10;
+      const diffMs = Math.abs(new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+      if (diffMs < 86400000) score += 25;
+      else if (diffMs < 604800000) score += 10;
 
       if (score >= 50) {
         duplicados.push({ original: a, posible: b, score });

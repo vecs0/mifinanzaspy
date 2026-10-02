@@ -75,7 +75,15 @@ export async function parsearSMS(
 
   const esTransferencia = /transfer|transf\.|enviaste|enviado|recibiste de/i.test(cuerpo);
   if (esTransferencia && monto !== null) {
-    tipo = 'transferencia';
+    const esEntrada = /recibiste|recibido|ingreso/i.test(cuerpo);
+    const esSalida = /enviaste|enviado|salida/i.test(cuerpo);
+    if (esEntrada) {
+      tipo = 'credito';
+    } else if (esSalida) {
+      tipo = 'debito';
+    } else {
+      tipo = 'transferencia';
+    }
   }
 
   if (monto === null || isNaN(monto) || monto <= 0) {
@@ -137,10 +145,9 @@ export async function parsearSMS(
 
   const categoriaId = clasificarSincrono(descripcion, tipo === 'credito' ? monto : -monto);
 
-
-  const fecha = typeof fechaSMS === 'number'
-    ? new Date(fechaSMS).toISOString()
-    : new Date(fechaSMS).toISOString();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const d = typeof fechaSMS === 'number' ? new Date(fechaSMS) : new Date(fechaSMS);
+  const fecha = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 
   const montoFinal = tipo === 'credito' ? Math.abs(monto) : -Math.abs(monto);
 
@@ -204,7 +211,13 @@ export function parsearSMSSincrono(
   if (!monto || isNaN(monto) || monto <= 0) return null;
 
   const esTransferencia = /transfer|transf\.|enviaste|enviado|recibiste de/i.test(cuerpo);
-  if (esTransferencia) tipo = 'transferencia';
+  if (esTransferencia) {
+    const esEntrada = /recibiste|recibido|ingreso/i.test(cuerpo);
+    const esSalida = /enviaste|enviado|salida/i.test(cuerpo);
+    if (esEntrada) tipo = 'credito';
+    else if (esSalida) tipo = 'debito';
+    else tipo = 'transferencia';
+  }
 
   let saldoPost: number | null = null;
   if (patron.regexSaldo) {
@@ -222,9 +235,9 @@ export function parsearSMSSincrono(
   }
 
   const categoriaId = clasificarSincrono(descripcion, tipo === 'credito' ? monto : -monto);
-  const fecha = typeof fechaSMS === 'number'
-    ? new Date(fechaSMS).toISOString()
-    : new Date(fechaSMS).toISOString();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const d = typeof fechaSMS === 'number' ? new Date(fechaSMS) : new Date(fechaSMS);
+  const fecha = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 
   return {
     cuentaId,

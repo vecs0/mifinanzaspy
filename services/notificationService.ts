@@ -135,10 +135,12 @@ export function detenerEscuchaNotificaciones(): void {
 export async function programarRecordatorioDiario(): Promise<void> {
   try {
     const {
-      scheduleNotificationAsync, cancelAllScheduledNotificationsAsync,
+      scheduleNotificationAsync, getAllScheduledNotificationsAsync,
       SchedulableTriggerInputTypes,
     } = await import('expo-notifications');
-    await cancelAllScheduledNotificationsAsync();
+    const existing = await getAllScheduledNotificationsAsync();
+    const yaProgramado = existing.some(n => n.content.title === 'MiFinanzasPY' && n.content.body === '¿Registraste tus gastos de hoy?');
+    if (yaProgramado) return;
     await scheduleNotificationAsync({
       content: {
         title: 'MiFinanzasPY',

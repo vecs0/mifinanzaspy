@@ -33,3 +33,4 @@ expo-env.d.ts
 # debug keystore
 *.keystore
 !release.keystore.example
+.claude/worktrees/

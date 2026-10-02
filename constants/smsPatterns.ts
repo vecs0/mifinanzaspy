@@ -142,8 +142,15 @@ export function detectarBancoPorRemitente(remitente: string): string | null {
 }
 
 /**
- * Parsea un monto desde un string tipo "1.500.000" o "1,500,000" → 1500000
+ * Parsea un monto en guaranies desde "1.500.000", "1,500,000" o "1.500,50" y devuelve un entero (redondea decimales)
  */
 export function parsearMontoGuarani(raw: string): number {
-  return parseInt(raw.replace(/[.,]/g, '').trim(), 10);
+  const limpio = raw.trim().replace(/[^\d.,]/g, '');
+  const commas = (limpio.match(/,/g) || []).length;
+  const dots = (limpio.match(/\./g) || []).length;
+  if (commas === 1 && /,\d{1,2}$/.test(limpio)) {
+    const [ent, dec] = limpio.split(',');
+    return Math.round(parseFloat(ent.replace(/\./g, '') + '.' + dec));
+  }
+  return parseInt(limpio.replace(/[.,]/g, ''), 10);
 }

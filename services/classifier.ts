@@ -23,27 +23,29 @@ export async function clasificarTransaccion(
   descripcion: string,
   monto: number
 ): Promise<string> {
-  const texto = descripcion.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const texto = descripcion.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
   const reglas = await getReglas();
   for (const regla of reglas) {
+    const patron = regla.patronTexto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (regla.esRegex) {
       try {
-        if (new RegExp(regla.patronTexto, 'i').test(texto)) {
+        if (new RegExp(patron, 'i').test(texto)) {
           return regla.categoriaId;
         }
       } catch {
         console.warn('[Classifier] Invalid regex');
       }
     } else {
-      if (texto.includes(regla.patronTexto.toLowerCase())) {
+      if (texto.includes(patron)) {
         return regla.categoriaId;
       }
     }
   }
 
   for (const [keyword, catId] of KEYWORDS_CLASIFICACION) {
-    if (texto.includes(keyword.toLowerCase())) {
+    const kw = keyword.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (new RegExp(`(^|\\s|[^a-z0-9])${kw}(\\s|$|[^a-z0-9])`, 'i').test(texto)) {
       return catId;
     }
   }
@@ -56,10 +58,11 @@ export async function clasificarTransaccion(
  * Solo usa las palabras clave estáticas.
  */
 export function clasificarSincrono(descripcion: string, monto: number): string {
-  const texto = descripcion.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const texto = descripcion.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
   for (const [keyword, catId] of KEYWORDS_CLASIFICACION) {
-    if (texto.includes(keyword.toLowerCase())) {
+    const kw = keyword.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (new RegExp(`(^|\\s|[^a-z0-9])${kw}(\\s|$|[^a-z0-9])`, 'i').test(texto)) {
       return catId;
     }
   }
@@ -75,9 +78,10 @@ export async function aprenderRegla(
   descripcion: string,
   categoriaId: string
 ): Promise<void> {
-  // Extraemos las primeras 3+ palabras significativas como patrón
   const palabras = descripcion
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .split(/\s+/)
     .filter(p => p.length >= 3)
     .slice(0, 3);
@@ -88,7 +92,7 @@ export async function aprenderRegla(
   const regla: Omit<ReglaClasificacion, 'id'> = {
     patronTexto: patron,
     categoriaId,
-    prioridad: 10, // Mayor que las predefinidas
+    prioridad: 10,
     esRegex: false,
   };
 

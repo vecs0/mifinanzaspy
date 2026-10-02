@@ -7,6 +7,7 @@
  */
 import * as SQLite from 'expo-sqlite';
 import { CATEGORIAS } from '@/constants/categories';
+import nacl from 'tweetnacl';
 import { encrypt, decrypt } from '@/services/encryption';
 import type {
   CuentaBancaria, Transaccion, Categoria,
@@ -15,13 +16,17 @@ import type {
 } from '@/types/finance';
 
 let db: SQLite.SQLiteDatabase | null = null;
+let migrationsRun = false;
 
 function getDB(): SQLite.SQLiteDatabase {
   if (!db) {
     db = SQLite.openDatabaseSync('mifinanzaspy.db');
     initSchema(db);
   }
-  migrate(db);
+  if (!migrationsRun) {
+    migrate(db);
+    migrationsRun = true;
+  }
   return db;
 }
 
@@ -48,6 +53,8 @@ function migrate(database: SQLite.SQLiteDatabase): void {
   try { database.execSync("ALTER TABLE transacciones ADD COLUMN contraparte_nombre TEXT"); } catch (_) { console.warn('[DB] Migration: contraparte_nombre column'); }
   try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_traspaso ON transacciones(es_traspaso, fecha) WHERE es_traspaso = 1"); } catch (_) { console.warn('[DB] Migration: idx_traspaso index'); }
   try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_cuenta_par ON transacciones(cuenta_par_id) WHERE cuenta_par_id IS NOT NULL"); } catch (_) { console.warn('[DB] Migration: idx_cuenta_par index'); }
+  try { database.execSync("ALTER TABLE transacciones ADD COLUMN hash_verificacion TEXT"); } catch (_) { console.warn('[DB] Migration: hash_verificacion column'); }
+  try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_hash ON transacciones(hash_verificacion) WHERE hash_verificacion IS NOT NULL"); } catch (_) { console.warn('[DB] Migration: idx_hash index'); }
   try { database.execSync('CREATE TABLE IF NOT EXISTS categorias_ocultas (id TEXT PRIMARY KEY)'); } catch (_) { console.warn('[DB] Migration: categorias_ocultas table'); }
   try { database.execSync('ALTER TABLE chat_cache ADD COLUMN session_id TEXT'); } catch (_) { console.warn('[DB] Migration: chat_cache session_id column'); }
 }
@@ -205,15 +212,51 @@ export async function getTransacciones(opciones: {
   );
   const descifradas = await Promise.all(rows.map(async r => {
     const t = mapTransaccion(r);
-    t.smsRaw = await decrypt(t.smsRaw);
-    t.descripcion = (await decrypt(t.descripcion)) ?? '';
+    t.smsRaw = await descifrarSeguro(t.smsRaw);
+    t.descripcion = (await descifrarSeguro(t.descripcion)) ?? '';
     return t;
   }));
   return descifradas;
 }
 
+async function descifrarSeguro(valor: string | null): Promise<string | null> {
+  try {
+    return await decrypt(valor);
+  } catch (e) {
+    console.warn('[DB] No se pudo descifrar un campo:', e);
+    return '';
+  }
+}
+
+const FUENTES_AUTOMATICAS = new Set(['sms', 'notificacion', 'csv', 'email']);
+
+export function calcularHashTransaccion(tx: Pick<Transaccion, 'cuentaId' | 'monto' | 'fecha' | 'descripcion' | 'smsRaw'>): string {
+  const base = [tx.cuentaId, tx.monto, tx.fecha.slice(0, 10), (tx.smsRaw || tx.descripcion || '').trim().toLowerCase()].join('|');
+  const h = nacl.hash(new TextEncoder().encode(base));
+  return Array.from(h.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function asegurarCuentaEfectivo(db: SQLite.SQLiteDatabase): void {
+  db.runSync(
+    `INSERT OR IGNORE INTO cuentas (id, banco_id, banco_nombre, app_package, tipo_cuenta, alias, saldo_actual, moneda, activa, sms_habilitado, notif_habilitada, color, icono, fecha_creacion)
+     VALUES ('efectivo', 'efectivo', 'Efectivo', '', 'efectivo', 'Efectivo', 0, 'PYG', 0, 0, 0, '#2D7A56', 'cash', ?)`,
+    [new Date().toISOString()]
+  );
+}
+
 export async function insertTransaccion(tx: Omit<Transaccion, 'id'>): Promise<Transaccion> {
   const db = getDB();
+  if (tx.cuentaId === 'efectivo') asegurarCuentaEfectivo(db);
+
+  const hash = calcularHashTransaccion(tx);
+  if (FUENTES_AUTOMATICAS.has(tx.fuente)) {
+    const existing = db.getFirstSync<{ id: string }>(
+      'SELECT id FROM transacciones WHERE hash_verificacion = ? LIMIT 1',
+      [hash]
+    );
+    if (existing) return { ...tx, id: existing.id };
+  }
+
   const id = uuid();
   const smsCifrado = await encrypt(tx.smsRaw ?? null);
   const descCifrada = await encrypt(tx.descripcion || null);
@@ -221,8 +264,8 @@ export async function insertTransaccion(tx: Omit<Transaccion, 'id'>): Promise<Tr
     `INSERT INTO transacciones
       (id, cuenta_id, banco_id, monto, tipo, categoria_id, descripcion,
        fuente, fecha, saldo_post, sms_raw, procesado, notas, adjunto,
-       es_traspaso, cuenta_par_id, contraparte_banco_id, contraparte_nombre)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       es_traspaso, cuenta_par_id, contraparte_banco_id, contraparte_nombre, hash_verificacion)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, tx.cuentaId, tx.bancoId, tx.monto, tx.tipo, tx.categoriaId,
       descCifrada ?? '', tx.fuente, tx.fecha,
@@ -231,6 +274,7 @@ export async function insertTransaccion(tx: Omit<Transaccion, 'id'>): Promise<Tr
       tx.adjunto ?? null,
       tx.esTraspaso ?? 0, tx.cuentaParId ?? null,
       tx.contraparteBancoId ?? null, tx.contraparteNombre ?? null,
+      hash,
     ]
   );
   db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [tx.monto, tx.cuentaId]);
@@ -244,15 +288,36 @@ export function updateCategoria(txId: string, categoriaId: string): void {
   );
 }
 
-export function updateTransaccion(txId: string, data: { descripcion?: string; monto?: number; fecha?: string }): void {
+export async function updateTransaccion(txId: string, data: { descripcion?: string; monto?: number; fecha?: string }): Promise<void> {
+  const db = getDB();
+  const existing = db.getFirstSync<{ monto: number; cuenta_id: string }>(
+    'SELECT monto, cuenta_id FROM transacciones WHERE id = ?',
+    [txId]
+  );
+  if (!existing) return;
+
   const sets: string[] = [];
   const vals: any[] = [];
-  if (data.descripcion !== undefined) { sets.push('descripcion = ?'); vals.push(data.descripcion); }
-  if (data.monto !== undefined) { sets.push('monto = ?'); vals.push(data.monto); }
-  if (data.fecha !== undefined) { sets.push('fecha = ?'); vals.push(data.fecha); }
+  if (data.descripcion !== undefined) {
+    const descCifrada = await encrypt(data.descripcion);
+    sets.push('descripcion = ?');
+    vals.push(descCifrada ?? '');
+  }
+  if (data.monto !== undefined) {
+    sets.push('monto = ?');
+    vals.push(data.monto);
+    const diff = data.monto - existing.monto;
+    if (diff !== 0) {
+      db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [diff, existing.cuenta_id]);
+    }
+  }
+  if (data.fecha !== undefined) {
+    sets.push('fecha = ?');
+    vals.push(data.fecha);
+  }
   if (sets.length === 0) return;
   vals.push(txId);
-  getDB().runSync(`UPDATE transacciones SET ${sets.join(', ')} WHERE id = ?`, vals);
+  db.runSync(`UPDATE transacciones SET ${sets.join(', ')} WHERE id = ?`, vals);
 }
 
 export function deleteTransaccion(txId: string, monto: number, cuentaId: string): void {

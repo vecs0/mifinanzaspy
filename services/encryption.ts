@@ -1,6 +1,6 @@
 /**
  * encryption
- * Responsabilidad: Cifrado/descifrado autenticado con retrocompatibilidad XOR
+ * Responsabilidad: Cifrado/descifrado autenticado con tweetnacl (XSalsa20-Poly1305)
  * Usado por: database
  * Depende de: expo-secure-store, expo-crypto, tweetnacl
  */
@@ -71,26 +71,6 @@ function getKey(): Promise<string> {
   return keyPromise;
 }
 
-function xorEncode(text: string, key: string): string {
-  const bytes = new TextEncoder().encode(text);
-  const keyBytes = new TextEncoder().encode(key);
-  const result = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    result[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
-  }
-  return btoa(String.fromCharCode(...result));
-}
-
-function xorDecode(encoded: string, key: string): string {
-  const bytes = new Uint8Array(atob(encoded).split('').map(c => c.charCodeAt(0)));
-  const keyBytes = new TextEncoder().encode(key);
-  const result = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    result[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
-  }
-  return new TextDecoder().decode(result);
-}
-
 function aesEncode(text: string, keyHex: string): string {
   const key = hexToUint8Array(keyHex);
   const nonce = nacl.randomBytes(NONCE_LENGTH);
@@ -113,31 +93,38 @@ function aesDecode(encoded: string, keyHex: string): string {
   return new TextDecoder().decode(decrypted);
 }
 
+function tieneBasura(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0xfffd || (c < 32 && c !== 9 && c !== 10 && c !== 13)) return true;
+  }
+  return false;
+}
+
+function decodeLegacy(encoded: string, keyHex: string): string {
+  try {
+    const bytes = unb64(encoded);
+    const keyBytes = new TextEncoder().encode(keyHex);
+    const out = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(out);
+    return tieneBasura(text) ? encoded : text;
+  } catch {
+    return encoded;
+  }
+}
+
 export async function encrypt(text: string | null): Promise<string | null> {
   if (!text) return text;
   const key = await getKey();
-  try {
-    return V2_PREFIX + aesEncode(text, key);
-  } catch (e) {
-    console.warn('[Encryption] AES encrypt failed, falling back:', e);
-    return xorEncode(text, key);
-  }
+  return V2_PREFIX + aesEncode(text, key);
 }
 
 export async function decrypt(encoded: string | null): Promise<string | null> {
   if (!encoded) return encoded;
   const key = await getKey();
   if (encoded.startsWith(V2_PREFIX)) {
-    try {
-      return aesDecode(encoded.slice(V2_PREFIX.length), key);
-    } catch (e) {
-      console.warn('[Encryption] AES decrypt failed:', e);
-      return null;
-    }
+    return aesDecode(encoded.slice(V2_PREFIX.length), key);
   }
-  try {
-    return xorDecode(encoded, key);
-  } catch {
-    return encoded;
-  }
+  return decodeLegacy(encoded, key);
 }

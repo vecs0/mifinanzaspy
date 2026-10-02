@@ -45,11 +45,11 @@ describe('clasificarSincrono', () => {
     expect(clasificarSincrono('xyzzy desconocido', -100000)).toBe('otros');
   });
 
-  test.failing('palabras clave con tilde en la tabla deben poder coincidir (inversión)', () => {
+  test('palabras clave con tilde en la tabla deben poder coincidir (inversión)', () => {
     expect(clasificarSincrono('Inversión fondo', -1000000)).toBe('inversion');
   });
 
-  test.failing('no debe clasificar por subcadena dentro de otra palabra (ande en "grande")', () => {
+  test('no debe clasificar por subcadena dentro de otra palabra (ande en "grande")', () => {
     expect(clasificarSincrono('Compra grande', -100000)).toBe('otros');
   });
 });

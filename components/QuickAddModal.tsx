@@ -205,9 +205,9 @@ function fmtFecha(d: Date): string {
   return d.toLocaleDateString('es-PY', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function toLocalISO(d: Date): string {
+function toDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) {
@@ -265,11 +265,11 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10);
     if (!montoNum || montoNum <= 0) return;
 
-    const realCuentaId = cuentaId || cuentas[0]?.id || '';
+    const realCuentaId = esEfectivo ? 'efectivo' : (cuentaId || cuentas[0]?.id || '');
     if (!realCuentaId) return;
     const cuenta = cuentas.find(c => c.id === realCuentaId);
-    const realBancoId = cuenta?.bancoId ?? 'manual';
-    const fechaStr = toLocalISO(fecha);
+    const realBancoId = esEfectivo ? 'efectivo' : (cuenta?.bancoId ?? 'manual');
+    const fechaStr = toDateISO(fecha);
 
     if (tipoTx === 'transferencia') {
       const cuentaDest = cuentas.find(c => c.id === cuentaDestinoId);
@@ -288,10 +288,13 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
         fuente: 'manual', fecha: fechaStr,
         saldoPost: null, smsRaw: null, procesado: true, notas: null, adjunto: null,
       };
-      setMonto(''); setDescripcion(''); setFecha(new Date());
-      onGuardado();
-      Promise.all([insertTransaccion(txSalida), insertTransaccion(txEntrada)])
-        .catch(e => console.error('Error guardando transferencia:', e));
+      try {
+        await Promise.all([insertTransaccion(txSalida), insertTransaccion(txEntrada)]);
+        setMonto(''); setDescripcion(''); setFecha(new Date());
+        onGuardado();
+      } catch (e) {
+        console.error('Error guardando transferencia:', e);
+      }
       return;
     }
 
@@ -304,9 +307,13 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
       saldoPost: null, smsRaw: null, procesado: true, notas: null, adjunto: null,
     };
 
-    setMonto(''); setDescripcion(''); setFecha(new Date());
-    onGuardado();
-    insertTransaccion(tx).catch(e => console.error('Error guardando transaccion:', e));
+    try {
+      await insertTransaccion(tx);
+      setMonto(''); setDescripcion(''); setFecha(new Date());
+      onGuardado();
+    } catch (e) {
+      console.error('Error guardando transaccion:', e);
+    }
   }, [monto, cuentaId, cuentaDestinoId, categoriaId, descripcion, tipoTx, cuentas, fecha]);
 
   const montoValido = parseInt(monto.replace(/\D/g, ''), 10) > 0;

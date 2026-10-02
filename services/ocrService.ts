@@ -5,6 +5,7 @@
  * Depende de: apiConfig
  */
 import { llamarAIProxy } from '@/services/apiConfig';
+import { limpiarJSON } from '@/services/jsonUtils';
 
 
 export interface OcrResultado {
@@ -16,21 +17,6 @@ export interface OcrResultado {
   tipo?: 'egreso' | 'ingreso';
   banco?: string;
   error?: string;
-}
-
-function limpiarJSON(texto: string): string {
-  let t = texto
-    .replace(/"\s*\.\s*/g, '":"')
-    .replace(/\.\s*:/g, ':')
-    .replace(/"\s*"/g, '","')
-    .replace(/\(\s*/g, '{')
-    .replace(/\)\s*\]/g, '}]')
-    .replace(/\)\s*[,\s]*/g, '},')
-    .replace(/\)\s*$/g, '}')
-    .replace(/'/g, '"')
-    .replace(/,(\s*[}\]])/g, '$1')
-    .replace(/,\s*$/, '');
-  return t;
 }
 
 function extraerJSON(texto: string): any {

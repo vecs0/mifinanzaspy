@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'jest-expo',
   testRegex: '__tests__[\\\\/].*\\.test\\.ts$',
+  testPathIgnorePatterns: ['<rootDir>/.claude/worktrees/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

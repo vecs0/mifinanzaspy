@@ -36,11 +36,11 @@ describe('detectarDuplicados', () => {
     expect(detectarDuplicados()).toEqual([]);
   });
 
-  it('marca duplicado exacto con score 100', () => {
+  it('marca duplicado exacto con score 80', () => {
     conFilas([fila({ id: 'a' }), fila({ id: 'b' })]);
     const r = detectarDuplicados();
     expect(r).toHaveLength(1);
-    expect(r[0].score).toBe(100);
+    expect(r[0].score).toBe(80);
   });
 
   it('ignora montos distintos en otra cuenta y dia', () => {
@@ -53,7 +53,7 @@ describe('detectarDuplicados', () => {
 
   it('compara monto por valor absoluto (egreso vs ingreso igual)', () => {
     conFilas([fila({ id: 'a' }), fila({ id: 'b', monto: 100000 })]);
-    expect(detectarDuplicados()[0].score).toBe(100);
+    expect(detectarDuplicados()[0].score).toBe(80);
   });
 
   it('ordena por score descendente', () => {
@@ -65,7 +65,7 @@ describe('detectarDuplicados', () => {
     const r = detectarDuplicados();
     const scores = r.map(d => d.score);
     expect(scores).toEqual([...scores].sort((x, y) => y - x));
-    expect(r[0].score).toBe(100);
+    expect(r[0].score).toBe(80);
   });
 
   it('mapea procesado a booleano', () => {

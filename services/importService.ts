@@ -7,69 +7,9 @@
 import { File } from 'expo-file-system';
 import { insertTransaccion, getCuentas } from '@/services/database';
 import { llamarAIProxy } from '@/services/apiConfig';
+import { limpiarJSON, findClose, extractElements } from '@/services/jsonUtils';
 
-
-function limpiarJSON(texto: string): string {
-  let t = texto
-    .replace(/"\s*\.\s*/g, '":"')
-    .replace(/\.\s*:/g, ':')
-    .replace(/"\s*"/g, '","')
-    .replace(/\(\s*/g, '{')
-    .replace(/\)\s*\]/g, '}]')
-    .replace(/\)\s*[,\s]*/g, '},')
-    .replace(/\)\s*$/g, '}')
-    .replace(/'/g, '"')
-    .replace(/,(\s*[}\]])/g, '$1')
-    .replace(/,\s*$/, '');
-  return t;
-}
-
-function extraerJSONArray(texto: string): any[] | null {
-  function findClose(src: string, from: number): number {
-    let depth = 0;
-    let inStr = false;
-    let escape = false;
-    for (let i = from; i < src.length; i++) {
-      const ch = src[i];
-      if (escape)          { escape = false; continue; }
-      if (ch === '\\')     { escape = true;  continue; }
-      if (ch === '"')      { inStr = !inStr; continue; }
-      if (inStr)           { continue; }
-      if (ch === '[' || ch === '{') { depth++; continue; }
-      if (ch === ']' || ch === '}') {
-        depth--;
-        if (depth === 0) return i;
-      }
-    }
-    return -1;
-  }
-
-  function extractElements(src: string, arrayStart: number): any[] {
-    const items: any[] = [];
-    let pos = arrayStart + 1;
-
-    while (pos < src.length) {
-      while (pos < src.length && src[pos] !== '{' && src[pos] !== '[') {
-        const ch = src[pos];
-        if (ch === ']' && items.length > 0) return items;
-        pos++;
-      }
-      if (pos >= src.length) break;
-
-      const elemStart = pos;
-      const closeIdx = findClose(src, elemStart);
-
-      if (closeIdx === -1) break;
-
-      const elemStr = src.slice(elemStart, closeIdx + 1);
-      try {
-        items.push(JSON.parse(elemStr));
-      } catch { console.warn('[ImportService] JSON parse fallback'); }
-      pos = closeIdx + 1;
-    }
-    return items;
-  }
-
+export function extraerJSONArray(texto: string): any[] | null {
   const crudo = texto.trim();
   const rootStart = crudo.indexOf('[');
   if (rootStart !== -1) {
