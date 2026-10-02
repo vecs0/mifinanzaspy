@@ -34,7 +34,7 @@ export default function SuccessScreen({ movimientos, savedCount, onDone }: Props
   const totalEgresos  = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto, 0);
   const isReport = movimientos.length > 1;
 
-  const iconBg = dark ? '#0d2218' : '#EAF5EE';
+  const iconBg = t.positiveBg;
 
   return (
     <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 56 }}>
@@ -75,7 +75,7 @@ export default function SuccessScreen({ movimientos, savedCount, onDone }: Props
       </View>
 
       <TouchableOpacity style={{ width: '100%', paddingVertical: 14, borderRadius: 12, backgroundColor: t.accent, alignItems: 'center' }} onPress={onDone}>
-        <Text style={{ fontSize: 15, fontWeight: '600', color: '#FAF8F4' }}>Listo</Text>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: t.onAccent }}>Listo</Text>
       </TouchableOpacity>
     </View>
   );
