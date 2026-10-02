@@ -298,7 +298,7 @@ function useStyles(t: typeof colors) {
     },
     input: {
       fontSize: 17, color: t.ink, padding: 14, borderRadius: br.lg,
-      backgroundColor: t.bg, borderWidth: 1, borderColor: 'rgba(24,21,19,0.08)',
+      backgroundColor: t.bg, borderWidth: 1, borderColor: t.hairline,
       fontFamily: 'Geist',
     },
     charHint: { fontSize: 10, color: t.muted, textAlign: 'right', fontFamily: 'GeistMono' },
@@ -306,7 +306,7 @@ function useStyles(t: typeof colors) {
     fechaRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
     fechaBox: {
       flex: 1, height: 52, borderRadius: br.lg,
-      backgroundColor: t.bg, borderWidth: 1, borderColor: 'rgba(24,21,19,0.08)',
+      backgroundColor: t.bg, borderWidth: 1, borderColor: t.hairline,
       fontFamily: 'GeistMono', fontSize: 17, fontWeight: '500',
       letterSpacing: 1, color: t.ink,
     },

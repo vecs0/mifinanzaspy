@@ -5,15 +5,19 @@
  * Depende de: ninguno
  */
 import { Stack } from 'expo-router';
+import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
 
 export default function OnboardingLayout() {
+  const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
   return (
     <Stack
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
         gestureEnabled: true,
-        contentStyle: { backgroundColor: '#FAF8F4' },
+        contentStyle: { backgroundColor: t.bg },
       }}
     >
       <Stack.Screen name="bienvenida" options={{ gestureEnabled: false }} />

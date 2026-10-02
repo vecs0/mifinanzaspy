@@ -147,7 +147,7 @@ function useStyles(t: typeof colors) {
     featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     featureIcon: {
       width: 32, height: 32, borderRadius: 10,
-      backgroundColor: 'rgba(24,21,19,0.04)',
+      backgroundColor: t.surface,
       alignItems: 'center', justifyContent: 'center',
     },
     featureLabel: { fontSize: 14, color: t.ink2, fontFamily: fonts.ui },

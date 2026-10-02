@@ -50,11 +50,11 @@ function BackIcon({ color }: { color: string }) {
   );
 }
 
-function CheckCircle({ tinte }: { tinte: string }) {
+function CheckCircle({ tinte, onColor }: { tinte: string; onColor: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24">
       <Circle cx="12" cy="12" r="12" fill={tinte} />
-      <Path d="M7 12.5l3.5 3.5 6.5-7" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M7 12.5l3.5 3.5 6.5-7" stroke={onColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
   );
 }
@@ -104,7 +104,7 @@ function SeccionBancos({ letra, titulo, bancos, seleccionados, onToggle, open, o
                 key={banco.id}
                 style={[s.bankCard, activo
                   ? { borderColor: banco.tinte, borderWidth: 1.5, backgroundColor: dark ? `${banco.tinte}12` : `${banco.tinte}08` }
-                  : { borderColor: t.hairline, borderWidth: 1, backgroundColor: dark ? 'rgba(241,237,230,0.04)' : t.surface }
+                  : { borderColor: t.hairline, borderWidth: 1, backgroundColor: t.surface }
                 ]}
                 onPress={() => onToggle(banco.id)}
                 activeOpacity={0.75}
@@ -115,7 +115,7 @@ function SeccionBancos({ letra, titulo, bancos, seleccionados, onToggle, open, o
                 </Text>
                 <View style={s.checkWrap}>
                   {activo
-                    ? <CheckCircle tinte={banco.tinte} />
+                    ? <CheckCircle tinte={banco.tinte} onColor={t.card} />
                     : <EmptyCircle color={t.hairline} />
                   }
                 </View>
@@ -204,7 +204,7 @@ export default function BancosScreen() {
             bancoId: 'manual', bancoNombre: manual.trim(), appPackage: '',
             tipoCuenta: 'corriente', alias: manual.trim(), saldoActual: 0,
             moneda: 'PYG', activa: true, smsHabilitado: false, notifHabilitada: false,
-            color: '#6B7280', icono: 'bank',
+            color: colors.muted, icono: 'bank',
           });
         }
         router.back();
@@ -228,7 +228,7 @@ export default function BancosScreen() {
             bancoId: 'manual', bancoNombre: manual.trim(), appPackage: '',
             tipoCuenta: 'corriente', alias: manual.trim(), saldoActual: 0,
             moneda: 'PYG', activa: true, smsHabilitado: false, notifHabilitada: false,
-            color: '#6B7280', icono: 'bank',
+            color: colors.muted, icono: 'bank',
           });
         }
         router.push('/onboarding/permisos');
@@ -398,7 +398,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     searchWrap: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       marginHorizontal: 16, marginBottom: 16,
-      backgroundColor: dark ? 'rgba(241,237,230,0.06)' : t.surface,
+      backgroundColor: t.surface,
       borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
       borderWidth: 1, borderColor: t.hairline,
     },
@@ -413,7 +413,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     },
     secLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     secTag: {
-      backgroundColor: dark ? 'rgba(241,237,230,0.08)' : t.surface,
+      backgroundColor: t.surface,
       paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6,
       borderWidth: 1, borderColor: t.hairline,
     },
@@ -437,7 +437,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     checkWrap: { position: 'absolute', top: 8, right: 8 },
     manualCard: {
       marginHorizontal: 16, marginBottom: 8,
-      backgroundColor: dark ? 'rgba(241,237,230,0.04)' : t.surface,
+      backgroundColor: t.surface,
       borderRadius: 13, padding: 14,
       borderWidth: 1, borderColor: t.hairline,
     },
@@ -459,10 +459,10 @@ function useStyles(t: typeof colors, dark: boolean) {
       alignItems: 'center', justifyContent: 'center',
     },
     ctaBtnInactivo: {
-      backgroundColor: dark ? 'rgba(241,237,230,0.06)' : t.surface,
+      backgroundColor: t.surface,
       borderWidth: 1, borderColor: t.hairline,
     },
-    ctaTexto: { fontSize: 15, fontWeight: '600', color: '#FAF8F4', fontFamily: fonts.ui, letterSpacing: 0.1 },
+    ctaTexto: { fontSize: 15, fontWeight: '600', color: t.onAccent, fontFamily: fonts.ui, letterSpacing: 0.1 },
     ctaTextoInactivo: { color: t.ink3 },
   });
 }

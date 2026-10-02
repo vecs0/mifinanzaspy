@@ -13,13 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Polyline, Rect, Circle, Line } from 'react-native-svg';
 import { setConfig } from '@/services/database';
-import { colors, colorsDark, fonts, borderRadius as br } from '@/theme/design-system';
+import { colors, colorsDark, fonts, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
 
 
 type IconName = 'cutlery' | 'pie' | 'trend-up' | 'credit-card' | 'shopping-cart' | 'shield';
 
 function ObjIcon({ name, size = 18, color }: { name: IconName; size?: number; color: string }) {
-  const sw = { stroke: color, strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  const sw = { stroke: color, strokeWidth: iconStroke, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   const icons: Record<IconName, React.ReactNode> = {
     'cutlery': <>
       <Path {...sw} d="M3 3v6a3 3 0 006 0V3" stroke={color} />
@@ -67,7 +67,7 @@ function ArrowLeftIcon() {
   const t = dark ? colorsDark : colors;
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none"
-      stroke={t.accent} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      stroke={t.ink} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M19 12H5M12 19l-7-7 7-7" />
     </Svg>
   );
@@ -124,7 +124,10 @@ export default function ObjetivosScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          hitSlop={hit}
+          style={s.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Volver">
           <ArrowLeftIcon />
         </TouchableOpacity>
         <Text style={s.pasoNum}>3 / 5</Text>
@@ -152,22 +155,22 @@ export default function ObjetivosScreen() {
                 style={[s.card, on && s.cardOn]}
                 onPress={() => toggle(o.id)}
                 activeOpacity={0.75}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                accessibilityLabel={`${o.titulo}, ${o.hint}`}
               >
-                {/* Checkmark badge */}
-                {on && (
-                  <View style={s.badge}>
-                    <CheckIcon color={t.bg} />
-                  </View>
-                )}
-                {/* Ícono */}
                 <View style={[s.iconBox, on && s.iconBoxOn]}>
-                  <ObjIcon name={o.icon} size={18} color={on ? t.bg : t.muteText} />
+                  <ObjIcon name={o.icon} size={20} color={on ? t.onAccent : t.ink2} />
                 </View>
-                {/* Texto */}
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <View style={{ flex: 1 }}>
                   <Text style={s.cardTitulo}>{o.titulo}</Text>
                   <Text style={s.cardHint}>{o.hint}</Text>
                 </View>
+                {on && (
+                  <View style={s.badge}>
+                    <CheckIcon color={t.onAccent} />
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -187,9 +190,11 @@ export default function ObjetivosScreen() {
           onPress={continuar}
           disabled={!puedeAvanzar || guardando}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !puedeAvanzar || guardando }}
         >
           <Text style={[s.botonTexto, !puedeAvanzar && s.botonTextoDisabled]}>
-            Continuar →
+            Continuar
           </Text>
         </TouchableOpacity>
       </View>
@@ -208,7 +213,7 @@ function useStyles(t: typeof colors) {
       paddingBottom: 10,
     },
     pasoNum: {
-      fontSize: 11,
+      fontSize: 12,
       color: t.muted,
       fontFamily: fonts.mono,
     },
@@ -242,62 +247,59 @@ function useStyles(t: typeof colors) {
       fontFamily: fonts.ui,
     },
     gridContainer: {
-      paddingHorizontal: 22,
+      paddingHorizontal: 24,
       paddingBottom: 8,
     },
+    backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -12 },
     grid: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
+      gap: 8,
     },
     card: {
-      width: '47.5%',
-      minHeight: 120,
-      padding: 14,
+      minHeight: 68,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
       borderRadius: br.lg,
-      backgroundColor: t.card,
+      backgroundColor: 'transparent',
       borderWidth: 1,
-      borderColor: 'rgba(24,21,19,0.06)',
-      flexDirection: 'column',
+      borderColor: t.hairline,
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: 12,
-      position: 'relative',
     },
     cardOn: {
-      backgroundColor: 'rgba(63,142,90,0.07)',
-      borderColor: '#3F8E5A',
+      backgroundColor: t.accentBg,
+      borderColor: t.accent,
     },
     badge: {
-      position: 'absolute',
-      top: 10,
-      right: 10,
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor: '#3F8E5A',
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: t.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
     iconBox: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
-      backgroundColor: 'rgba(24,21,19,0.04)',
+      width: 44,
+      height: 44,
+      borderRadius: br.md,
+      backgroundColor: t.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
     iconBoxOn: {
-      backgroundColor: '#3F8E5A',
+      backgroundColor: t.accent,
     },
     cardTitulo: {
-      fontSize: 13.5,
+      fontSize: 15,
       fontWeight: '600',
       color: t.ink,
-      lineHeight: 18,
+      lineHeight: 20,
       fontFamily: fonts.ui,
     },
     cardHint: {
-      fontSize: 11,
-      color: t.muted,
+      fontSize: 13,
+      color: t.ink2,
       marginTop: 2,
       fontFamily: fonts.ui,
     },
@@ -315,34 +317,34 @@ function useStyles(t: typeof colors) {
       marginBottom: 10,
     },
     footerCount: {
-      fontSize: 12,
+      fontSize: 13,
       color: t.muteText,
       fontFamily: fonts.ui,
     },
     footerMin: {
-      fontSize: 11,
+      fontSize: 12,
       color: t.muted,
       fontFamily: fonts.mono,
     },
     boton: {
       height: 52,
       borderRadius: br.lg,
-      backgroundColor: t.ink,
+      backgroundColor: t.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
     botonDisabled: {
-      backgroundColor: 'rgba(24,21,19,0.08)',
+      backgroundColor: t.hairline,
     },
     botonTexto: {
       fontSize: 15,
       fontWeight: '600',
-      color: t.bg,
+      color: t.onAccent,
       fontFamily: fonts.ui,
       letterSpacing: 0.1,
     },
     botonTextoDisabled: {
-      color: 'rgba(24,21,19,0.3)',
+      color: t.muteText,
     },
   });
 }
