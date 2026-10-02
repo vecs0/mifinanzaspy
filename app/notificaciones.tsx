@@ -5,10 +5,7 @@
  * Depende de: database
  */
 import { useState, useEffect } from 'react';
-import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
@@ -16,44 +13,39 @@ import {
   getNotificaciones, marcarNotifLeida, marcarNotifEliminada,
 } from '@/services/database';
 import { useThemeCtx } from '@/services/ThemeContext';
-import { colors, colorsDark } from '@/theme/design-system';
+import { colors, colorsDark, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
+import { EmptyState } from '@/components/EmptyState';
+import { InlineError } from '@/components/InlineError';
+import { SkeletonRows } from '@/components/Skeleton';
 import type { NotificacionApp } from '@/types/finance';
 
 function useStyles(t: typeof colors) {
   return StyleSheet.create({
     header: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: 20, paddingVertical: 14,
+      paddingHorizontal: 12, paddingVertical: 4,
     },
     titulo: { fontSize: 20, fontWeight: '700', color: t.ink },
-    empty: {
-      flex: 1, alignItems: 'center', justifyContent: 'center',
-      paddingHorizontal: 40, paddingBottom: 60,
-    },
-    emptyTitulo: { fontSize: 18, fontWeight: '700', color: t.ink, marginTop: 16, marginBottom: 8 },
-    emptyDesc: { fontSize: 14, color: t.muteText, textAlign: 'center', lineHeight: 20 },
+    iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
     dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent },
-    card: {
-      backgroundColor: t.card, borderRadius: 12, borderWidth: 1, borderColor: t.hairline,
-      overflow: 'hidden',
-    },
-    cardNoLeida: { borderLeftWidth: 3, borderLeftColor: t.accent },
-    cardHeader: { flexDirection: 'row', padding: 14, gap: 8 },
-    cardTitulo: { fontSize: 14, fontWeight: '600', color: t.ink, marginBottom: 2 },
-    cardPreview: { fontSize: 12.5, color: t.muteText, lineHeight: 17, marginTop: 2 },
-    cardFecha: { fontSize: 11, color: t.ink3 },
-    cardBody: { paddingHorizontal: 14, paddingBottom: 14 },
-    cardCuerpo: { fontSize: 13, color: t.ink, lineHeight: 19 },
+    item: { paddingVertical: 4 },
+    cardHeader: { flexDirection: 'row', paddingVertical: 12, gap: 12, minHeight: 56 },
+    cardTitulo: { fontSize: 15, fontWeight: '600', color: t.ink, marginBottom: 2, flexShrink: 1 },
+    cardPreview: { fontSize: 13, color: t.ink2, lineHeight: 18, marginTop: 2 },
+    cardFecha: { fontSize: 12, color: t.muteText },
+    cardBody: { paddingBottom: 12 },
+    cardCuerpo: { fontSize: 14, color: t.ink, lineHeight: 20 },
     btnCopper: {
-      paddingHorizontal: 16, paddingVertical: 8,
-      borderRadius: 8, backgroundColor: t.accent,
+      paddingHorizontal: 20, minHeight: 44, justifyContent: 'center',
+      borderRadius: br.md, backgroundColor: t.accent,
     },
-    btnCopperTexto: { fontSize: 13, fontWeight: '600', color: colorsDark.bg },
+    btnCopperTexto: { fontSize: 14, fontWeight: '600', color: t.onAccent },
     btnOutline: {
-      paddingHorizontal: 16, paddingVertical: 8,
-      borderRadius: 8, borderWidth: 1, borderColor: t.hairline,
+      paddingHorizontal: 20, minHeight: 44, justifyContent: 'center',
+      borderRadius: br.md, borderWidth: 1, borderColor: t.hairline,
     },
-    btnOutlineTexto: { fontSize: 13, fontWeight: '500', color: t.muteText },
+    btnOutlineTexto: { fontSize: 14, fontWeight: '500', color: t.ink2 },
+    sep: { height: StyleSheet.hairlineWidth, backgroundColor: t.hairline },
   });
 }
 
@@ -73,10 +65,18 @@ export default function NotificacionesScreen() {
   const [items, setItems] = useState<NotificacionApp[]>([]);
   const [expandida, setExpandida] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   function cargar() {
-    setItems(getNotificaciones());
-    setCargando(false);
+    setError(null);
+    try {
+      setItems(getNotificaciones());
+    } catch (e) {
+      console.error('Notificaciones error:', e);
+      setError('No pudimos cargar tus notificaciones.');
+    } finally {
+      setCargando(false);
+    }
   }
 
   useEffect(() => { cargar(); }, []);
@@ -98,57 +98,57 @@ export default function NotificacionesScreen() {
     cargar();
   }
 
-  if (cargando) {
-    return (
-      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={t.accent} />
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={hit} style={s.iconBtn}
+          accessibilityRole="button" accessibilityLabel="Volver">
           <Svg width={22} height={22} viewBox="0 0 24 24" fill="none"
-            stroke={t.ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            stroke={t.ink} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
             <Path d="M15 5l-7 7 7 7" />
           </Svg>
         </TouchableOpacity>
-        <Text style={s.titulo}>Notificaciones</Text>
+        <Text style={s.titulo} accessibilityRole="header">Notificaciones</Text>
         {items.length > 0 ? (
-          <TouchableOpacity onPress={limpiarTodas} hitSlop={8}>
-            <Text style={{ fontSize: 13, color: t.accent, fontWeight: '600' }}>Limpiar</Text>
+          <TouchableOpacity onPress={limpiarTodas} hitSlop={hit} style={[s.iconBtn, { width: 64 }]}
+            accessibilityRole="button" accessibilityLabel="Limpiar todas las notificaciones">
+            <Text style={{ fontSize: 14, color: t.accent, fontWeight: '600' }}>Limpiar</Text>
           </TouchableOpacity>
         ) : (
-          <View style={{ width: 22 }} />
+          <View style={{ width: 44 }} />
         )}
       </View>
 
-      {items.length === 0 ? (
-        <View style={s.empty}>
-          <Svg width={48} height={48} viewBox="0 0 24 24" fill="none">
-            <Path d="M18 8a6 6 0 00-12 0c0 5-3 7-3 7h18s-3-2-3-7" stroke={t.ink3} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-            <Path d="M13.73 21a2 2 0 01-3.46 0" stroke={t.ink3} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-          <Text style={s.emptyTitulo}>Sin novedades</Text>
-          <Text style={s.emptyDesc}>
-            {'Aún no hay notificaciones nuevas.\nLas alertas y reportes aparecerán acá.'}
-          </Text>
+      {error && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <InlineError mensaje={error} onReintentar={cargar} />
         </View>
+      )}
+
+      {cargando ? (
+        <View style={{ paddingHorizontal: 24, paddingTop: 16 }}><SkeletonRows count={4} /></View>
+      ) : items.length === 0 ? (
+        <EmptyState
+          titulo="Sin novedades"
+          texto="Las alertas, recordatorios y reportes van a aparecer acá."
+        />
       ) : (
         <FlatList
           data={items}
           keyExtractor={i => i.id}
-          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+          ItemSeparatorComponent={() => <View style={s.sep} />}
           renderItem={({ item }) => {
             const abierta = expandida === item.id;
             return (
-              <View style={[s.card, !item.leida && s.cardNoLeida]}>
+              <View style={s.item}>
                 <TouchableOpacity
                   style={s.cardHeader}
                   onPress={() => handleLeer(item.id)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: abierta }}
+                  accessibilityLabel={`${item.leida ? '' : 'Sin leer. '}${item.titulo}`}
                 >
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
