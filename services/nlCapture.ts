@@ -4,7 +4,7 @@
  * Usado por: QuickAddModal, app/_layout (deep link)
  * Depende de: classifier, apiConfig, jsonUtils, categories
  */
-import { clasificarSincrono, clasificarTransaccion } from '@/services/classifier';
+import { clasificarSincrono, clasificarTransaccion, aprenderRegla } from '@/services/classifier';
 import { llamarAIProxy } from '@/services/apiConfig';
 import { extraerJSONArray } from '@/services/jsonUtils';
 import { CATEGORIAS } from '@/constants/categories';
@@ -416,6 +416,20 @@ export async function capturarTexto(texto: string, hoy: Date = new Date()): Prom
 
 export function claveDuplicado(it: Pick<ItemCaptura, 'monto' | 'concepto' | 'fecha'>): string {
   return `${it.monto}|${it.fecha}|${normalizar(it.concepto).trim()}`;
+}
+
+export async function aprenderCorreccion(concepto: string, categoriaId: string, tipo: TipoCaptura): Promise<boolean> {
+  const limpio = limpiarTexto(concepto, MAX_CONCEPTO);
+  if (!limpio || !CATEGORIAS_VALIDAS.has(categoriaId)) return false;
+  try {
+    const actual = await categorizarConMemoria(limpio, tipo);
+    if (actual === categoriaId) return false;
+    await aprenderRegla(limpio, categoriaId);
+    return true;
+  } catch {
+    console.warn('[nlCapture] No se pudo aprender la regla');
+    return false;
+  }
 }
 
 export function duplicadosInternos(items: Pick<ItemCaptura, 'monto' | 'concepto' | 'fecha'>[]): Set<number> {

@@ -13,6 +13,7 @@ import {
   MAX_ITEMS,
   mejorarConIA,
   capturarTexto,
+  aprenderCorreccion,
 } from '@/services/nlCapture';
 import { getReglas } from '@/services/database';
 import { llamarAIProxy } from '@/services/apiConfig';
@@ -318,6 +319,30 @@ describe('IA: mejorarConIA / capturarTexto', () => {
     mockGetReglas.mockReturnValue([{ id: '1', patronTexto: 'almuerzo', categoriaId: 'hogar', prioridad: 10, esRegex: false }]);
     const r = await capturarTexto('gaste 25 mil en almuerzo', HOY);
     expect(r.items[0].categoriaId).toBe('hogar');
+  });
+});
+
+describe('aprenderCorreccion', () => {
+  const { insertRegla } = jest.requireMock('@/services/database');
+
+  it('guarda regla cuando la categoria difiere de la sugerida', async () => {
+    insertRegla.mockClear();
+    const ok = await aprenderCorreccion('Almuerzo', 'hogar', 'egreso');
+    expect(ok).toBe(true);
+    expect(insertRegla).toHaveBeenCalledWith(expect.objectContaining({ patronTexto: 'almuerzo', categoriaId: 'hogar' }));
+  });
+
+  it('no duplica si ya clasifica igual', async () => {
+    insertRegla.mockClear();
+    expect(await aprenderCorreccion('Almuerzo', 'restaurante', 'egreso')).toBe(false);
+    expect(insertRegla).not.toHaveBeenCalled();
+  });
+
+  it('rechaza categorias inexistentes y conceptos vacios', async () => {
+    insertRegla.mockClear();
+    expect(await aprenderCorreccion('Almuerzo', 'inventada', 'egreso')).toBe(false);
+    expect(await aprenderCorreccion('', 'hogar', 'egreso')).toBe(false);
+    expect(insertRegla).not.toHaveBeenCalled();
   });
 });
 
