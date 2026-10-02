@@ -4,19 +4,23 @@
  * Usado por: expo-router (tab)
  * Depende de: database
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  ScrollView, StyleSheet, ActivityIndicator, RefreshControl,
+  ScrollView, StyleSheet, RefreshControl,
   TextInput, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { getTransacciones, getCuentas, getCategoriasOcultas } from '@/services/database';
 import { TransactionRow } from '@/components/TransactionRow';
 import { BankLogo } from '@/components/BankLogo';
 import { Icon } from '@/components/Icon';
+import { EmptyState } from '@/components/EmptyState';
+import { InlineError } from '@/components/InlineError';
+import { SkeletonRows } from '@/components/Skeleton';
 import { CATEGORIAS } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
@@ -104,6 +108,8 @@ export default function HistorialScreen() {
   const [txs, setTxs]               = useState<Transaccion[]>([]);
   const [cuentas, setCuentas]       = useState<CuentaBancaria[]>([]);
   const [cargando, setCargando]     = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const cargadoRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [periodo, setPeriodo]       = useState('mes');
   const [filtroCat, setFiltroCat]   = useState<string | null>(null);
@@ -126,7 +132,8 @@ export default function HistorialScreen() {
   const tieneEfectivo = useMemo(() => txs.some(tx => tx.bancoId === 'efectivo'), [txs]);
 
   const cargar = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true); else setCargando(true);
+    if (isRefresh) setRefreshing(true); else if (!cargadoRef.current) setCargando(true);
+    setError(null);
     try {
       const desde = getFechaDesde(periodo);
       const data = await getTransacciones({
@@ -136,14 +143,20 @@ export default function HistorialScreen() {
         limite: 500,
       });
       setTxs(data);
+      cargadoRef.current = true;
+    } catch (e) {
+      console.error('Historial error:', e);
+      setError('No pudimos cargar tus movimientos.');
     } finally {
       setCargando(false);
       setRefreshing(false);
     }
   }, [periodo, filtroCat, filtroBanco]);
 
-  useEffect(() => { setCuentas(getCuentas()); }, []);
-  useEffect(() => { cargar(); }, [cargar]);
+  useFocusEffect(useCallback(() => {
+    setCuentas(getCuentas());
+    cargar();
+  }, [cargar]));
 
   function toggleSearch() {
     const toShow = !showSearch;
@@ -310,11 +323,13 @@ export default function HistorialScreen() {
               <View style={s.bkWrap}>
                 <TouchableOpacity
                   style={[s.bk, filtroBanco === 'efectivo' && s.bkOn, {
-                    backgroundColor: filtroBanco === 'efectivo' ? (dark ? '#0d2218' : '#d8f0e6') : 'transparent',
-                    borderColor: filtroBanco === 'efectivo' ? (dark ? '#4db88a' : '#2d7a56') : t.hairline,
+                    backgroundColor: filtroBanco === 'efectivo' ? t.positiveBg : 'transparent',
+                    borderColor: filtroBanco === 'efectivo' ? t.positive : t.hairline,
                   }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Filtrar por efectivo"
                   onPress={() => setFiltroBanco(prev => prev === 'efectivo' ? null : 'efectivo')}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: dark ? '#4db88a' : '#2d7a56' }}>$</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: t.positive }}>$</Text>
                 </TouchableOpacity>
                 <Text style={s.bkLbl}>Efectivo</Text>
               </View>
@@ -334,8 +349,8 @@ export default function HistorialScreen() {
         </TouchableOpacity>
         {catsVisibles.map(c => {
           const isIng = c.tipo === 'ingreso';
-          const bg     = isIng ? (dark ? '#0d2e1e' : '#d6f0e2') : (dark ? '#2e1210' : '#fbe8e4');
-          const border = isIng ? (dark ? '#1f3325' : '#b8dfc9') : (dark ? '#3a2220' : '#f5c4bc');
+          const bg     = isIng ? t.positiveBg : t.negativeBg;
+          const border = t.hairline;
           const clr    = isIng ? t.positive : t.negative;
           const activa = filtroCat === c.id;
           return (
@@ -351,9 +366,14 @@ export default function HistorialScreen() {
       </ScrollView>
 
       {/* ── Lista ── */}
+      {error && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          <InlineError mensaje={error} onReintentar={() => cargar(true)} />
+        </View>
+      )}
       {cargando ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={t.accent} />
+        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+          <SkeletonRows count={6} />
         </View>
       ) : (
         <FlatList
@@ -364,14 +384,10 @@ export default function HistorialScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={() => cargar(true)} tintColor={t.accent} />
           }
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingTop: 40, gap: 10 }}>
-              <Svg width={36} height={36} viewBox="0 0 24 24" fill="none">
-                <Path d="M8 2v3M16 2v3M3 8h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
-                  stroke={t.hairline} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-                <Path d="M9 14l6 0M9 18l4 0" stroke={t.hairline} strokeWidth={1.5} strokeLinecap="round" />
-              </Svg>
-              <Text style={{ fontSize: 13, color: t.ink3 }}>Sin movimientos en este período</Text>
-            </View>
+            <EmptyState
+              titulo="Sin movimientos en este período"
+              texto={filtroCat || filtroBanco || busqueda ? 'Probá quitando algún filtro para ver más resultados.' : 'Cuando registres un gasto o ingreso, va a aparecer acá.'}
+            />
           }
           renderItem={({ item }) => {
             if (item.type === 'header') {
