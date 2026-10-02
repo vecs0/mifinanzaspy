@@ -23,7 +23,6 @@ import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark, fonts, iconStroke, hit } from '@/theme/design-system';
 
-
 interface Mensaje {
   id:    string;
   rol:   'user' | 'assistant' | 'system';

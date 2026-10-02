@@ -11,13 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
 import { EmptyState } from '@/components/EmptyState';
 import { InlineError } from '@/components/InlineError';
 import { SkeletonRows } from '@/components/Skeleton';
-import { getRecordatorios, insertRecordatorio, deleteRecordatorio, toggleRecordatorio, type Recordatorio } from '@/services/reminders';
+import { getRecordatorios, insertRecordatorio, deleteRecordatorio, type Recordatorio } from '@/services/reminders';
 
 function daysUntil(dateStr: string): number {
   const target = new Date(dateStr);

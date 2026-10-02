@@ -4,9 +4,9 @@
  * Usado por: app/_layout.tsx (proveedor global)
  * Depende de: ThemeContext
  */
-import { useRef, useEffect, useCallback, createContext, useContext, useState } from 'react';
+import { useRef, useCallback, createContext, useContext, useState } from 'react';
 import {
-  View, Text, Animated, StyleSheet, TouchableOpacity, Dimensions,
+  View, Text, Animated, StyleSheet, TouchableOpacity,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

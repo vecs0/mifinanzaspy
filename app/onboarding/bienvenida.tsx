@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Rect, Circle } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { colors, colorsDark, fonts } from '@/theme/design-system';
 
 

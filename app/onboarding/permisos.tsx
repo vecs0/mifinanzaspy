@@ -11,7 +11,7 @@ import {
 import { useThemeCtx } from '@/services/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import {
   solicitarPermisosLecturaSMS, getPermisosLecturaSMS,
 } from '@/services/smsService';
