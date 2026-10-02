@@ -19,6 +19,7 @@ import { getCuentas, deleteCuenta, updateCuentaToggle, actualizarOrdenCuenta, ge
 import { useThemeCtx, type ModoOscuro } from '@/services/ThemeContext';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { BankLogo } from '@/components/BankLogo';
+import { BackupSection } from '@/components/BackupSection';
 import { colors, colorsDark, borderRadius as br } from '@/theme/design-system';
 import type { CuentaBancaria } from '@/types/finance';
 
@@ -716,6 +717,7 @@ export default function SettingsScreen() {
 
       <CapturaSection />
       <AppSection />
+      <BackupSection />
     </View>
   );
 
