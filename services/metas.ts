@@ -23,6 +23,10 @@ export interface Meta {
   fechaMeta?: string;    // ISO date target
 }
 
+export function asegurarTablaMetas(): void {
+  ensureTable();
+}
+
 function ensureTable(): void {
   try {
     getDB().execSync(`
