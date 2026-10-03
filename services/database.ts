@@ -236,6 +236,14 @@ export function calcularHashTransaccion(tx: Pick<Transaccion, 'cuentaId' | 'mont
   return Array.from(h.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+export function existeTransaccionPorHash(hash: string): boolean {
+  const row = getDB().getFirstSync<{ id: string }>(
+    'SELECT id FROM transacciones WHERE hash_verificacion = ? LIMIT 1',
+    [hash]
+  );
+  return !!row;
+}
+
 function asegurarCuentaEfectivo(db: SQLite.SQLiteDatabase): void {
   db.runSync(
     `INSERT OR IGNORE INTO cuentas (id, banco_id, banco_nombre, app_package, tipo_cuenta, alias, saldo_actual, moneda, activa, sms_habilitado, notif_habilitada, color, icono, fecha_creacion)

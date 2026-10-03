@@ -24,6 +24,7 @@ import { clearDemoMetas } from '@/services/metas';
 import SplashLogo from '@/components/SplashVideo';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { FloatingNotificationProvider } from '@/components/FloatingNotification';
+import DeepLinkCaptura from '@/components/DeepLinkCaptura';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -236,6 +237,7 @@ export default function RootLayout() {
             />
           </Stack>
           </FloatingNotificationProvider>
+          {estado === 'app' && <DeepLinkCaptura />}
           {estado === 'onboarding' && <Redirect href="/onboarding/bienvenida" />}
         </ThemeProvider>
       </SafeAreaProvider>

@@ -1,8 +1,8 @@
 /**
  * QuickAddModal
  * Responsabilidad: Modal de registro rapido de transaccion
- * Usado por: app/(tabs)/index.tsx
- * Depende de: database, CategoryManager, BrandMark, CategoriaChip, Icon
+ * Usado por: app/(tabs)/index.tsx, DeepLinkCaptura
+ * Depende de: database, CapturaTexto, CategoryManager, BrandMark, CategoriaChip, Icon
  */
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -19,6 +19,7 @@ import { BANCO_POR_ID } from '@/constants/banks';
 import { Icon } from '@/components/Icon';
 import CalendarPicker from '@/components/CalendarPicker';
 import CategoryManager from '@/components/CategoryManager';
+import CapturaTexto from '@/components/CapturaTexto';
 import { useVoiceInput } from '@/services/voiceInput';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark } from '@/theme/design-system';
@@ -53,6 +54,7 @@ interface Props {
   cuentas:    CuentaBancaria[];
   onClose:    () => void;
   onGuardado: () => void;
+  initialTexto?: string;
 }
 
 function useStyles(t: typeof colors) {
@@ -210,7 +212,7 @@ function toDateISO(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) {
+export function QuickAddModal({ visible, cuentas, onClose, onGuardado, initialTexto }: Props) {
   const { dark } = useThemeCtx();
   const t = dark ? colorsDark : colors;
   const s = useStyles(t);
@@ -228,6 +230,7 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
   const [showCal, setShowCal] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [modo, setModo] = useState<'texto' | 'manual'>('texto');
 
   const tColor = tipoColor(tipoTx, t.accent);
   const tDark = tipoDarkText(tipoTx);
@@ -236,6 +239,10 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
   useEffect(() => {
     if (voice.transcript && voice.transcript !== descripcion) setDescripcion(voice.transcript);
   }, [voice.transcript]);
+
+  useEffect(() => {
+    if (initialTexto) setModo('texto');
+  }, [initialTexto]);
 
   useEffect(() => {
     if (cuentas.length > 0 && !cuentaId) setCuentaId(cuentas[0].id);
@@ -361,6 +368,29 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['texto', 'manual'] as const).map(m => (
+                <TouchableOpacity
+                  key={m}
+                  style={[s.tipoBtn, modo === m && { backgroundColor: t.accent, borderColor: t.accent }]}
+                  onPress={() => setModo(m)}
+                >
+                  <Text style={[s.tipoBtnTxt, modo === m && { color: '#fff' }]}>{m === 'texto' ? 'Texto o voz' : 'Formulario'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {modo === 'texto' ? (
+              <CapturaTexto
+                cuentas={cuentas}
+                cuentaId={cuentaId}
+                onCuentaChange={setCuentaId}
+                initialTexto={initialTexto}
+                onGuardado={onGuardado}
+                onManual={() => setModo('manual')}
+              />
+            ) : (
+            <>
             <View style={[{ flexDirection: 'row', gap: 8 }, { marginBottom: 20 }]}>
               <TipoBtn tipo="egreso" label="Egreso" />
               <TipoBtn tipo="ingreso" label="Ingreso" />
@@ -546,6 +576,8 @@ export function QuickAddModal({ visible, cuentas, onClose, onGuardado }: Props) 
                 {guardando ? 'Guardando...' : tipoTx === 'transferencia' ? 'Guardar transferencia' : 'Guardar ' + tipoTx}
               </Text>
             </TouchableOpacity>
+            </>
+            )}
 
           </ScrollView>
 
