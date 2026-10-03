@@ -82,16 +82,16 @@ export default function EditScreen({ movimientos, onChange, onConfirm, onBack }:
 
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: t.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.hairline }}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: t.accent }} onPress={onConfirm}>
-          <CheckIcon color="#FAF8F4" />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#FAF8F4' }}>Confirmar y procesar</Text>
+          <CheckIcon color={t.onAccent} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: t.onAccent }}>Confirmar y procesar</Text>
         </TouchableOpacity>
       </View>
 
       <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <View style={{ flex: 1, backgroundColor: t.scrim, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
           <View style={{ backgroundColor: t.card, borderRadius: 20, padding: 24, width: '100%', maxWidth: 320, borderWidth: StyleSheet.hairlineWidth, borderColor: t.hairline, gap: 12 }}>
-            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(168,64,31,0.12)', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
-              <TrashIcon color="#A8401F" />
+            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.negativeBg, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
+              <TrashIcon color={t.negative} />
             </View>
             <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink, textAlign: 'center' }}>Eliminar transacción</Text>
             <Text style={{ fontSize: 13, color: t.ink2, textAlign: 'center', lineHeight: 19 }} numberOfLines={3}>
@@ -105,10 +105,10 @@ export default function EditScreen({ movimientos, onChange, onConfirm, onBack }:
                 <Text style={{ fontSize: 14, fontWeight: '500', color: t.ink }}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#A8401F', alignItems: 'center' }}
+                style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: t.negative, alignItems: 'center' }}
                 onPress={ejecutarEliminar}
               >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#FAF8F4' }}>Eliminar</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: t.onAccent }}>Eliminar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -139,9 +139,9 @@ function MovItem({ mov, index, total, onUpdate, onEliminar }: { mov: MovimientoD
           <TouchableOpacity
             onPress={onEliminar}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ padding: 4, borderRadius: 6, backgroundColor: 'rgba(168,64,31,0.10)' }}
+            style={{ padding: 4, borderRadius: 6, backgroundColor: t.negativeBg }}
           >
-            <TrashIcon color="#A8401F" />
+            <TrashIcon color={t.negative} />
           </TouchableOpacity>
         )}
       </View>
@@ -152,7 +152,7 @@ function MovItem({ mov, index, total, onUpdate, onEliminar }: { mov: MovimientoD
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {TIPOS.map(tp => (
               <TouchableOpacity key={tp} style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: mov.tipo === tp ? t.accent : t.hairline, backgroundColor: mov.tipo === tp ? t.accent : t.card, alignItems: 'center' }} onPress={() => onUpdate('tipo', tp)}>
-                <Text style={{ fontSize: 13, color: mov.tipo === tp ? '#fff' : t.ink3, fontWeight: mov.tipo === tp ? '600' : '400' }}>
+                <Text style={{ fontSize: 13, color: mov.tipo === tp ? t.onAccent : t.ink2, fontWeight: mov.tipo === tp ? '600' : '400' }}>
                   {tp.charAt(0).toUpperCase() + tp.slice(1)}
                 </Text>
               </TouchableOpacity>

@@ -6,6 +6,7 @@
  */
 import { Text, StyleSheet, type TextStyle } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
 
 interface Props {
   size?: 'hero' | 'large' | 'small';
@@ -20,12 +21,13 @@ const SIZES = {
 
 export function BrandMark({ size = 'large', style }: Props) {
   const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
   return (
     <Text
       style={[
         s.base,
         SIZES[size],
-        { color: dark ? '#F1EDE6' : '#181513' },
+        { color: t.ink },
         style,
       ]}
     >

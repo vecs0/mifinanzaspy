@@ -76,17 +76,10 @@ function CloseIcon({ color }: { color: string }) {
     </Svg>
   );
 }
-function SparkleIcon() {
+function SparkleIcon({ color }: { color: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24">
-      <Path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="#C5821A" />
-    </Svg>
-  );
-}
-function CheckIcon() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16">
-      <Path d="M4 8l3 3 5-5" fill="none" stroke="#fff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill={color} />
     </Svg>
   );
 }
@@ -128,7 +121,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     fileName: { flex: 1, fontSize: 13, color: t.ink },
     emptyText: { fontSize: 15, fontWeight: '500', color: t.ink, textAlign: 'center' },
     emptySubtext: { fontSize: 13, color: t.ink2, textAlign: 'center', lineHeight: 18 },
-    btnProcessText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+    btnProcessText: { fontSize: 15, fontWeight: '600', color: t.onAccent },
     processingTitle: { fontSize: 18, fontWeight: '600', color: t.ink, marginBottom: 6, textAlign: 'center' },
     processingSubtitle: { fontSize: 14, color: t.ink2, marginBottom: 24, textAlign: 'center' },
     progressPct: { fontSize: 13, color: t.accent, fontWeight: '600', marginBottom: 20 },
@@ -149,7 +142,7 @@ function useStyles(t: typeof colors, dark: boolean) {
     },
     progressBar: {
       width: '100%', height: 6,
-      backgroundColor: dark ? 'rgba(241,237,230,0.1)' : 'rgba(24,21,19,0.08)',
+      backgroundColor: t.hairline,
       borderRadius: 3, overflow: 'hidden', marginBottom: 8,
     },
     progressFill: { height: '100%', backgroundColor: t.accent, borderRadius: 3 },
@@ -166,9 +159,9 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
   const [progreso, setProgreso] = useState({ procesados: 0, total: 0 });
   const [erroresBatch, setErroresBatch] = useState<{ archivo: string; error: string }[]>([]);
 
-  const cameraIconBg  = dark ? '#2a1a08' : '#FDF0E0';
-  const galleryIconBg = dark ? '#0d2218' : '#EAF5EE';
-  const pdfIconBg     = dark ? '#1e1c18' : '#F1EFE8';
+  const cameraIconBg  = t.accentBg;
+  const galleryIconBg = t.positiveBg;
+  const pdfIconBg     = t.surface;
 
   const agregarImagenes = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -269,13 +262,13 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
         <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 20 }}>
           <TouchableOpacity style={{ flex: 1, alignItems: 'center', gap: 6 }} onPress={agregarFoto} activeOpacity={0.7}>
             <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: cameraIconBg, alignItems: 'center', justifyContent: 'center' }}>
-              <CameraIcon color="#C5821A" />
+              <CameraIcon color={t.accent} />
             </View>
             <Text style={s.sourceBtnLabel}>Cámara</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ flex: 1, alignItems: 'center', gap: 6 }} onPress={agregarImagenes} activeOpacity={0.7}>
             <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: galleryIconBg, alignItems: 'center', justifyContent: 'center' }}>
-              <GalleryIcon color="#1B7A45" />
+              <GalleryIcon color={t.positive} />
             </View>
             <Text style={s.sourceBtnLabel}>Galería</Text>
           </TouchableOpacity>
@@ -299,7 +292,7 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
               {archivos.map(archivo => (
                 <View key={archivo.id} style={s.fileItem}>
                   <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: archivo.tipo === 'pdf' ? pdfIconBg : galleryIconBg, alignItems: 'center', justifyContent: 'center' }}>
-                    {archivo.tipo === 'pdf' ? <DocIcon color={t.muted} /> : <ImageIcon color="#1B7A45" />}
+                    {archivo.tipo === 'pdf' ? <DocIcon color={t.muted} /> : <ImageIcon color={t.positive} />}
                   </View>
                   <Text style={s.fileName} numberOfLines={1}>{archivo.nombre}</Text>
                   <TouchableOpacity onPress={() => quitarArchivo(archivo.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -323,7 +316,7 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
         {archivos.length > 0 && (
           <View style={s.actionBar}>
             <TouchableOpacity style={s.btnProcess} onPress={procesar} activeOpacity={0.85}>
-              <SparkleIcon />
+              <SparkleIcon color={t.accent} />
               <Text style={s.btnProcessText}>
                 Analizar {archivos.length} archivo{archivos.length !== 1 ? 's' : ''}
               </Text>
@@ -361,7 +354,7 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
   return (
     <View style={s.container}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: dark ? '#2a0e0e' : '#FCEBEB', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: t.negativeBg, alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
           <AlertIcon color={t.negative} />
         </View>
         <Text style={s.processingTitle}>No se encontraron transacciones</Text>

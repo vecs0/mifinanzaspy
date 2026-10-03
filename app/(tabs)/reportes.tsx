@@ -4,15 +4,19 @@
  * Usado por: expo-router (tab)
  * Depende de: database, reportGenerator
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Modal,
-  StyleSheet, ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import { getTransacciones, setConfig, getConfig } from '@/services/database';
 import { Icon } from '@/components/Icon';
+import { InlineError } from '@/components/InlineError';
+import { Skeleton, SkeletonRows } from '@/components/Skeleton';
+import { localDateKey } from '@/services/dateKeys';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark } from '@/theme/design-system';
@@ -65,6 +69,8 @@ export default function ReportesScreen() {
 
   const [periodo, setPeriodo]       = useState('mensual');
   const [cargando, setCargando]     = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const cargadoRef = useRef(false);
   const [dataActual, setDataActual] = useState<MesData | null>(null);
   const [dataAnterior, setDataAnterior] = useState<MesData | null>(null);
   const [planModal, setPlanModal]   = useState(false);
@@ -78,16 +84,17 @@ export default function ReportesScreen() {
     import('@/services/pdfReportService').then(m => m.listarPDFs()).then(setPdfs).catch(console.warn);
   }, []);
 
-  useEffect(() => {
-    async function cargar() {
-      setCargando(true);
+  const cargar = useCallback(async () => {
+    if (!cargadoRef.current) setCargando(true);
+    setError(null);
+    try {
       const now = new Date();
       let actual: MesData, anterior: MesData;
 
       if (periodo === 'diario') {
-        const hoy = now.toISOString().slice(0, 10);
+        const hoy = localDateKey(now);
         const ayerD = new Date(now); ayerD.setDate(ayerD.getDate() - 1);
-        const ayer = ayerD.toISOString().slice(0, 10);
+        const ayer = localDateKey(ayerD);
         [actual, anterior] = await Promise.all([getDataRango(hoy, hoy), getDataRango(ayer, ayer)]);
       } else if (periodo === 'semanal') {
         const dow = now.getDay() || 7;
@@ -96,11 +103,11 @@ export default function ReportesScreen() {
         const lunesAnt = new Date(lunes); lunesAnt.setDate(lunes.getDate() - 7);
         const domingoAnt = new Date(lunesAnt); domingoAnt.setDate(lunesAnt.getDate() + 6);
         [actual, anterior] = await Promise.all([
-          getDataRango(lunes.toISOString().slice(0, 10), domingo.toISOString().slice(0, 10)),
-          getDataRango(lunesAnt.toISOString().slice(0, 10), domingoAnt.toISOString().slice(0, 10)),
+          getDataRango(localDateKey(lunes), localDateKey(domingo)),
+          getDataRango(localDateKey(lunesAnt), localDateKey(domingoAnt)),
         ]);
       } else {
-        const mesActual = now.toISOString().slice(0, 7);
+        const mesActual = localDateKey(now).slice(0, 7);
         const anio = now.getFullYear(); const mesNum = now.getMonth() + 1;
         const mesAnterior = mesNum === 1 ? `${anio - 1}-12` : `${anio}-${String(mesNum - 1).padStart(2, '0')}`;
         [actual, anterior] = await Promise.all([getDataMes(mesActual), getDataMes(mesAnterior)]);
@@ -112,10 +119,16 @@ export default function ReportesScreen() {
       if (planGuardado) {
         try { setPlan(JSON.parse(planGuardado)); setPlanActivo(true); } catch { console.warn('[reportes] Error parseando plan guardado'); }
       }
+      cargadoRef.current = true;
+    } catch (e) {
+      console.error('Reportes error:', e);
+      setError('No pudimos cargar el reporte.');
+    } finally {
       setCargando(false);
     }
-    cargar();
   }, [periodo]);
+
+  useFocusEffect(useCallback(() => { cargar(); }, [cargar]));
 
   const mesActualNombre = useMemo(() => {
     return new Date().toLocaleString('es-PY', { month: 'long' });
@@ -196,8 +209,12 @@ export default function ReportesScreen() {
 
   if (cargando) {
     return (
-      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={t.accent} />
+      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.bg }}>
+        <View style={{ padding: 16, gap: 24 }} accessibilityLabel="Cargando reporte">
+          <Skeleton width={160} height={28} />
+          <Skeleton height={44} radius={12} />
+          <SkeletonRows count={5} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -211,6 +228,12 @@ export default function ReportesScreen() {
           <Text style={s.hdrLbl}>Reportes</Text>
           <Text style={s.hdrTitle}>{hdrSubtitulo}</Text>
         </View>
+
+        {error && (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+            <InlineError mensaje={error} onReintentar={cargar} />
+          </View>
+        )}
 
         {/* ── Tabs período ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -328,9 +351,9 @@ export default function ReportesScreen() {
 
           {/* ── Insight del asesor ── */}
           {insight && dataActual && (
-            <View style={[s.card, { backgroundColor: `${t.accent}0a`, borderColor: `${t.accent}25` }]}>
+            <View style={[s.card, { backgroundColor: t.accentBg, borderColor: t.hairline }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <View style={[s.catIcon, { backgroundColor: `${t.accent}20` }]}>
+                <View style={[s.catIcon, { backgroundColor: t.accentBg }]}>
                   <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
                     <Path d="M12 2a10 10 0 100 20 10 10 0 000-20zM12 16v-4M12 8h.01"
                       stroke={t.accent} strokeWidth={2} strokeLinecap="round" />
@@ -399,9 +422,9 @@ export default function ReportesScreen() {
             {pdfMsg && (
               <View style={{
                 paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, marginBottom: 10,
-                backgroundColor: pdfMsg.tipo === 'ok' ? `${t.positive}12` : pdfMsg.tipo === 'error' ? `${t.negative}12` : `${t.accent}10`,
+                backgroundColor: pdfMsg.tipo === 'ok' ? t.positiveBg : pdfMsg.tipo === 'error' ? t.negativeBg : t.accentBg,
                 borderWidth: 1,
-                borderColor: pdfMsg.tipo === 'ok' ? `${t.positive}30` : pdfMsg.tipo === 'error' ? `${t.negative}30` : `${t.accent}20`,
+                borderColor: t.hairline,
               }}>
                 <Text style={{ fontSize: 12, color: pdfMsg.tipo === 'ok' ? t.positive : pdfMsg.tipo === 'error' ? t.negative : t.accent }}>
                   {pdfMsg.texto}
@@ -530,7 +553,7 @@ function useStyles(t: typeof colors) {
       fontWeight: '500',
     },
     tabLblOn: {
-      color: colorsDark.bg,
+      color: t.onAccent,
       fontWeight: '600',
     },
     cards: {
@@ -647,7 +670,7 @@ function useStyles(t: typeof colors) {
     accentBtnLbl: {
       fontSize: 12.5,
       fontWeight: '600',
-      color: colorsDark.bg,
+      color: t.onAccent,
     },
     pdfStats: {
       flexDirection: 'row',
@@ -682,12 +705,12 @@ function useStyles(t: typeof colors) {
     genBtnLbl: {
       fontSize: 13,
       fontWeight: '600',
-      color: colorsDark.bg,
+      color: t.onAccent,
       letterSpacing: 0.1,
     },
     modalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.45)',
+      backgroundColor: t.scrim,
       justifyContent: 'center',
       alignItems: 'center',
       padding: 32,

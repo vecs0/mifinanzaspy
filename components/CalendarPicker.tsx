@@ -38,10 +38,10 @@ interface Props {
   accentColor?: string;
 }
 
-function useStyles(t: typeof colors, accent: string, dark: boolean) {
+function useStyles(t: typeof colors, accent: string) {
   return StyleSheet.create({
     wrapper: {
-      backgroundColor: dark ? '#1E1A17' : '#FFFFFF',
+      backgroundColor: t.card,
       borderRadius: 16,
       padding: 16,
       borderWidth: 1,
@@ -61,7 +61,7 @@ function useStyles(t: typeof colors, accent: string, dark: boolean) {
       width: 36, height: 36, borderRadius: 999,
       backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
     },
-    dayCircleText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+    dayCircleText: { fontSize: 15, fontWeight: '700', color: t.onAccent },
     navRow: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
       marginBottom: 10,
@@ -76,7 +76,7 @@ function useStyles(t: typeof colors, accent: string, dark: boolean) {
     },
     dayCell: {
       width: '14.28%', alignItems: 'center', justifyContent: 'center',
-      paddingVertical: 6, position: 'relative',
+      paddingVertical: 6, minHeight: 44, position: 'relative',
     },
     dayText: { fontSize: 13, fontWeight: '500', color: t.ink },
     confirmBar: {
@@ -89,11 +89,11 @@ function useStyles(t: typeof colors, accent: string, dark: boolean) {
       backgroundColor: accent, paddingHorizontal: 18, paddingVertical: 8,
       borderRadius: 10,
     },
-    confirmBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    confirmBtnText: { fontSize: 13, fontWeight: '700', color: t.onAccent },
     pickerList: {
       maxHeight: 220, marginBottom: 10,
       borderRadius: 10, borderWidth: 1, borderColor: t.hairline,
-      backgroundColor: dark ? '#1E1A17' : '#F5F3EE',
+      backgroundColor: t.surface,
     },
     pickerItem: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -186,7 +186,7 @@ export default function CalendarPicker({ selectedDate, onConfirm, events, accent
   const gridKey = `${calYear}-${calMonth}`;
   const selLabel = `${selDay} de ${NOMBRES_MESES[selMonth]} ${selYear}`;
   const pickerOpen = showYearPicker || showMonthPicker;
-  const s = useStyles(t, accent, dark);
+  const s = useStyles(t, accent);
 
   return (
     <View style={s.wrapper}>
@@ -294,7 +294,7 @@ export default function CalendarPicker({ selectedDate, onConfirm, events, accent
                   style={[s.dayCell, isSelected && { backgroundColor: accent, borderRadius: 999 }]}
                   onPress={() => seleccionarDia(d)}
                 >
-                  <Text style={[s.dayText, isSelected && { color: '#fff' }, isToday && !isSelected && { color: accent, fontWeight: '700' }]}>
+                  <Text style={[s.dayText, isSelected && { color: t.onAccent }, isToday && !isSelected && { color: accent, fontWeight: '700' }]}>
                     {d}
                   </Text>
                   {dots && (

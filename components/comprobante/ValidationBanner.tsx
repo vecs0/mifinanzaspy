@@ -12,10 +12,10 @@ import { colors, colorsDark } from '@/theme/design-system';
 import type { ReporteValidacion, Warning } from '@/services/transaccionValidator';
 
 const NIVEL = {
-  info:    { bg: '#EAF5EE', bgDark: '#0d2218', border: '#3F8E5A', color: '#3F8E5A' },
-  warning: { bg: '#FDF0E0', bgDark: '#2a1a08', border: '#C98330', color: '#C98330' },
-  error:   { bg: '#FCEBEB', bgDark: '#2a0e0e', border: '#A8401F', color: '#A8401F' },
-};
+  info:    { bg: 'positiveBg', color: 'positive' },
+  warning: { bg: 'warnBg', color: 'warn' },
+  error:   { bg: 'negativeBg', color: 'negative' },
+} as const;
 
 function InfoIcon({ color }: { color: string }) {
   return (
@@ -70,9 +70,10 @@ export default function ValidationBanner({ reporte }: Props) {
   if (reporte.ok && reporte.warnings.length === 0) return null;
 
   const nivel = nivelMayor(reporte.warnings);
-  const cfg = NIVEL[nivel];
+  const lvl = NIVEL[nivel];
+  const cfg = { bg: t[lvl.bg], color: t[lvl.color] };
   const est = reporte.estadisticas;
-  const bannerBg = dark ? cfg.bgDark : cfg.bg;
+  const bannerBg = cfg.bg;
 
   const toggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -82,7 +83,7 @@ export default function ValidationBanner({ reporte }: Props) {
   const Icon = nivel === 'error' ? ErrorIcon : nivel === 'warning' ? WarningIcon : InfoIcon;
 
   return (
-    <View style={[s.banner, { backgroundColor: bannerBg, borderColor: cfg.border }]}>
+    <View style={[s.banner, { backgroundColor: bannerBg }]}>
       <TouchableOpacity style={s.headerRow} onPress={toggle} activeOpacity={0.7}>
         <Icon color={cfg.color} />
         <View style={{ flex: 1 }}>
@@ -103,7 +104,7 @@ export default function ValidationBanner({ reporte }: Props) {
 
       {expandido && (
         <View style={[s.detalle, { borderTopColor: t.hairline }]}>
-          <View style={[s.statsRow, { backgroundColor: dark ? 'rgba(241,237,230,0.06)' : t.surface }]}>
+          <View style={[s.statsRow, { backgroundColor: t.surface }]}>
             <StatChip label="Ingresos" value={`Gs. ${Math.round(est.sumaIngresos).toLocaleString('es-PY')}`} color={t.positive} labelColor={t.ink3} />
             <StatChip label="Egresos" value={`Gs. ${Math.round(Math.abs(est.sumaEgresos)).toLocaleString('es-PY')}`} color={t.negative} labelColor={t.ink3} />
             <StatChip label="Balance" value={`Gs. ${Math.round(est.balanceNeto).toLocaleString('es-PY')}`} color={est.balanceNeto >= 0 ? t.positive : t.negative} labelColor={t.ink3} />
@@ -116,9 +117,9 @@ export default function ValidationBanner({ reporte }: Props) {
           )}
 
           {reporte.warnings.map((w, i) => {
-            const wCfg = NIVEL[w.nivel];
+            const wCfg = { color: t[NIVEL[w.nivel].color] };
             return (
-              <View key={i} style={[s.warningRow, { borderLeftColor: wCfg.color }]}>
+              <View key={i} style={s.warningRow}>
                 <Text style={[s.warningMsg, { color: wCfg.color }]}>{w.mensaje}</Text>
                 {w.detalle && <Text style={[s.warningDetalle, { color: t.ink2 }]}>{w.detalle}</Text>}
               </View>
@@ -147,14 +148,14 @@ function StatChip({ label, value, color, labelColor }: { label: string; value: s
 
 function useStyles(t: typeof colors) {
   return StyleSheet.create({
-    banner: { borderRadius: 12, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
+    banner: { borderRadius: 12, marginBottom: 16, overflow: 'hidden' },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
     titulo: { fontSize: 13, fontWeight: '600' },
     resumen: { fontSize: 12, marginTop: 1, opacity: 0.85 },
     detalle: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 10 },
     statsRow: { borderRadius: 8, padding: 10, gap: 8, flexDirection: 'row' },
     rangoText: { fontSize: 12 },
-    warningRow: { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 4 },
+    warningRow: { paddingVertical: 4 },
     warningMsg: { fontSize: 13, fontWeight: '500' },
     warningDetalle: { fontSize: 12, marginTop: 2, lineHeight: 16 },
     consejo: { fontSize: 12, fontStyle: 'italic', marginTop: 4 },

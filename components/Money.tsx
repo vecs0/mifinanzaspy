@@ -6,6 +6,7 @@
  */
 import { Text, StyleSheet, type TextStyle } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
 
 type MoneySize = 'hero' | 'large' | 'medium' | 'small';
 
@@ -44,11 +45,8 @@ export function Money({ amount, currency = 'PYG', size = 'medium', sign = 'auto'
   const isNegative = amount < 0;
   const prefix = getSign(amount, sign);
 
-  const textColor = amount === 0
-    ? (dark ? '#C5BDB5' : '#9B8E84')
-    : isNegative
-      ? (dark ? '#E57A5E' : '#A8401F')
-      : (dark ? '#9FE0B5' : '#3F8E5A');
+  const t = dark ? colorsDark : colors;
+  const textColor = amount === 0 ? t.muteText : isNegative ? t.negative : t.positive;
 
   return (
     <Text style={[s.base, SIZES[size], { color: textColor }, style]}>
@@ -60,5 +58,6 @@ export function Money({ amount, currency = 'PYG', size = 'medium', sign = 'auto'
 const s = StyleSheet.create({
   base: {
     fontFamily: 'GeistMono',
+    fontVariant: ['tabular-nums'],
   },
 });

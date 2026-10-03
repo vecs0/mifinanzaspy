@@ -6,6 +6,7 @@
  */
 import { Text, StyleSheet, type TextStyle } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark } from '@/theme/design-system';
 
 interface Props {
   label: string;
@@ -14,8 +15,9 @@ interface Props {
 
 export function Eyebrow({ label, style }: Props) {
   const { dark } = useThemeCtx();
+  const t = dark ? colorsDark : colors;
   return (
-    <Text style={[s.base, { color: dark ? 'rgba(241,237,230,0.6)' : '#9B8E84' }, style]}>
+    <Text style={[s.base, { color: t.muteText }, style]}>
       {label}
     </Text>
   );

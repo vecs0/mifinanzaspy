@@ -81,7 +81,7 @@ function TabLabel({ label, focused }: { label: string; focused: boolean }) {
     <Animated.Text
       style={{
         fontFamily: 'Geist',
-        fontSize: 10.5,
+        fontSize: 11,
         letterSpacing: 0.2,
         marginTop: 2,
         color: focused ? t.accent : t.ink3,
@@ -195,9 +195,9 @@ export default function TabsLayout() {
       </Tabs>
 
       <Modal visible={mostrarSalir} transparent animationType="fade" onRequestClose={() => setMostrarSalir(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <View style={{ flex: 1, backgroundColor: t.scrim, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
           <View style={{ backgroundColor: t.card, borderRadius: br.xl, padding: 24, width: '100%', maxWidth: 300, borderWidth: 1, borderColor: t.hairline, gap: 16 }}>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${t.accent}20`, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.accentBg, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
               <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
                 <Path d="M16 17l5-5-5-5" />
@@ -210,13 +210,13 @@ export default function TabsLayout() {
             </Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
-                style={{ flex: 1, paddingVertical: 12, borderRadius: br.md, backgroundColor: t.accent, alignItems: 'center' }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', borderRadius: br.md, backgroundColor: t.accent, alignItems: 'center' }}
                 onPress={() => BackHandler.exitApp()}
               >
-                <Text style={{ color: '#FAF8F4', fontSize: 14, fontWeight: '600' }}>Salir</Text>
+                <Text style={{ color: t.onAccent, fontSize: 14, fontWeight: '600' }}>Salir</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ flex: 1, paddingVertical: 12, borderRadius: br.md, backgroundColor: t.hairline, alignItems: 'center' }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', borderRadius: br.md, backgroundColor: t.hairline, alignItems: 'center' }}
                 onPress={() => setMostrarSalir(false)}
               >
                 <Text style={{ color: t.ink, fontSize: 14, fontWeight: '500' }}>Cancelar</Text>

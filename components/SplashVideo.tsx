@@ -6,29 +6,9 @@
  */
 import { useEffect, useRef } from 'react';
 import { View, Text, Image, Animated, StyleSheet, Dimensions, Easing, useColorScheme } from 'react-native';
+import { colors, colorsDark } from '@/theme/design-system';
 
 const { width, height } = Dimensions.get('window');
-
-const NAVY   = '#1B3861';
-const ORANGE = '#F5A623';
-const GREEN  = '#27AE60';
-
-const LIGHT = {
-  bg:    '#F8F9FA',
-  ink:   '#1A1A2E',
-  muted: '#6B7280',
-  glowA: 'rgba(27,56,97,0.07)',
-  glowB: 'rgba(245,166,35,0.06)',
-  shadow:'#000',
-};
-const DARK = {
-  bg:    '#0B1220',
-  ink:   '#EEF0F4',
-  muted: '#8B949E',
-  glowA: 'rgba(27,56,97,0.32)',
-  glowB: 'rgba(245,166,35,0.18)',
-  shadow: NAVY,
-};
 
 const ICON_SIZE = 118;
 
@@ -38,7 +18,8 @@ interface Props {
 
 export default function SplashLogo({ onReady }: Props) {
   const scheme = useColorScheme();
-  const t      = scheme === 'dark' ? DARK : LIGHT;
+  const c      = scheme === 'dark' ? colorsDark : colors;
+  const t      = { bg: c.bg, ink: c.ink, muted: c.muted, glowA: c.accentBg, glowB: c.accentBg, shadow: c.shadow };
 
   const glowOp    = useRef(new Animated.Value(0)).current;
   const glowScale = useRef(new Animated.Value(0.55)).current;
@@ -110,16 +91,16 @@ export default function SplashLogo({ onReady }: Props) {
 
       <Animated.View style={[s.titleWrap, { opacity: titleOp, transform: [{ translateY: titleY }] }]}>
         <Text style={[s.title, { color: t.ink }]}>
-          <Text style={{ color: NAVY }}>Mi</Text>
+          <Text style={{ color: c.ink }}>Mi</Text>
           {'Finanzas'}
-          <Text style={{ color: ORANGE }}>PY</Text>
+          <Text style={{ color: c.accent }}>PY</Text>
         </Text>
       </Animated.View>
 
       <Animated.View style={[s.tagWrap, { opacity: tagOp }]}>
-        <View style={[s.dot, { backgroundColor: ORANGE }]} />
+        <View style={[s.dot, { backgroundColor: c.accent }]} />
         <Text style={[s.tag, { color: t.muted }]}>Controlá tu dinero</Text>
-        <View style={[s.dot, { backgroundColor: GREEN }]} />
+        <View style={[s.dot, { backgroundColor: c.accent }]} />
       </Animated.View>
     </View>
   );
@@ -159,7 +140,7 @@ const s = StyleSheet.create({
     height: ICON_SIZE,
     borderRadius: 26,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
   },
   iconImg: {
     width:  ICON_SIZE,

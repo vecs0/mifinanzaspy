@@ -54,8 +54,8 @@ export default function ResultsScreen({ movimientos, totalEsperado, mergedCount,
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: isReport ? (dark ? '#0d1e30' : '#E6F1FB') : (dark ? '#0d2218' : '#EAF5EE'), marginBottom: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: isReport ? (dark ? '#6aacdc' : '#185FA5') : (dark ? '#4db88a' : '#1B7A45') }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: isReport ? t.accentBg : t.positiveBg, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isReport ? t.accent : t.positive }}>
             {isReport ? `Reporte · ${movimientos.length} movimientos${mergedCount ? ` (${mergedCount} fusionados)` : ''}` : 'Comprobante individual'}
           </Text>
         </View>
@@ -93,8 +93,8 @@ export default function ResultsScreen({ movimientos, totalEsperado, mergedCount,
             {items.map(mov => {
               const color = mov.tipo === 'egreso' ? t.negative : t.positive;
               const iconBg = mov.tipo === 'egreso'
-                ? (dark ? '#2a0e0e' : '#FCEBEB')
-                : (dark ? '#0d2218' : '#EAF5EE');
+                ? t.negativeBg
+                : t.positiveBg;
               return (
                 <View key={mov._tempId} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.hairline }}>
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center', marginRight: 10, marginTop: 2 }}>
@@ -123,8 +123,8 @@ export default function ResultsScreen({ movimientos, totalEsperado, mergedCount,
           <Text style={{ fontSize: 14, fontWeight: '500', color: t.ink }}>Editar</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ flex: 1.6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: t.accent }} onPress={onProcess}>
-          <CheckIcon color="#fff" />
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#FAF8F4' }}>Procesar y guardar</Text>
+          <CheckIcon color={t.onAccent} />
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.onAccent }}>Procesar y guardar</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -49,21 +49,17 @@ export function AlertsList() {
               gap: 10,
               padding: 12,
               borderRadius: br.md,
-              backgroundColor: t.card,
-              borderWidth: 1,
-              borderColor: t.hairline,
-              borderLeftWidth: 3,
-              borderLeftColor: cfg.color,
+              backgroundColor: t.surface,
             }}
           >
             <View style={{ marginTop: 1 }}>
               <Icon name={cfg.icon} size={16} color={cfg.color} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '500', color: t.ink, lineHeight: 18 }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: t.ink, lineHeight: 19 }}>
                 {a.mensaje}
               </Text>
-              <Text style={{ fontSize: 10, color: cfg.color, fontWeight: '600', marginTop: 2, textTransform: 'capitalize' }}>
+              <Text style={{ fontSize: 11, color: cfg.color, fontWeight: '600', marginTop: 2, textTransform: 'capitalize' }}>
                 {a.severidad}
               </Text>
             </View>

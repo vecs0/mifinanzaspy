@@ -5,6 +5,8 @@
  * Depende de: react-native-svg
  */
 import { View } from 'react-native';
+import { useThemeCtx } from '@/services/ThemeContext';
+import { colors, colorsDark, iconStroke } from '@/theme/design-system';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 
 interface Props {
@@ -14,15 +16,19 @@ interface Props {
   strokeWidth?: number;
 }
 
-function p(d?: string, color?: string, sw?: number) {
-  return { d, stroke: color ?? '#181513', strokeWidth: sw ?? 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+function p(d: string | undefined, color: string, sw?: number) {
+  return { d, stroke: color, strokeWidth: sw ?? iconStroke, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
 }
 
-export function Icon({ name, size = 20, color = '#181513', strokeWidth }: Props) {
+export function Icon({ name, size = 20, color: colorProp, strokeWidth }: Props) {
+  const { dark } = useThemeCtx();
+  const color = colorProp ?? (dark ? colorsDark : colors).ink;
   const sw = strokeWidth;
 
   const icons: Record<string, React.ReactNode> = {
 
+    'shield':          <Path {...p('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', color, sw)} />,
+    'sparkles':        <Path {...p('M5 3v4M3 5h4M19 3v4M17 5h4M12 3v2M10 12h4M12 17v2M8 12a4 4 0 008 0', color, sw)} />,
     'arrow-down-left': <Path {...p('M17 7l-10 10M17 17H7V7', color, sw)} />,
     'briefcase':       <>
                          <Rect x="3" y="8" width="18" height="13" rx="2" {...p(undefined, color, sw)} />

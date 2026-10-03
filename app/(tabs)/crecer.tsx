@@ -1,15 +1,16 @@
 /**
  * (tabs)/crecer.tsx
- * Responsabilidad: Metas de ahorro (Crecé)
+ * Responsabilidad: Metas de ahorro (Crecé) y resumen de presupuestos
  * Usado por: expo-router (tab)
- * Depende de: metas, budgets
+ * Depende de: metas, budgets, celebracion
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, ActivityIndicator, Alert, Animated, Easing,
+  Modal, Alert, Animated, Easing,
   TextInput, Keyboard,
 } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path, Circle, Rect, Line, Polyline, G } from 'react-native-svg';
@@ -19,8 +20,12 @@ import {
   type Meta, type TipoMeta,
 } from '@/services/metas';
 import { getPresupuestosConGasto, type PresupuestoConGasto } from '@/services/budgets';
+import { localDateKey } from '@/services/dateKeys';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
-import { colors, colorsDark, fonts, borderRadius as br } from '@/theme/design-system';
+import { EmptyState } from '@/components/EmptyState';
+import { InlineError } from '@/components/InlineError';
+import { Skeleton, SkeletonRows } from '@/components/Skeleton';
+import { colors, colorsDark, fonts, borderRadius as br, iconStroke, hit, motion } from '@/theme/design-system';
 
 function fmtGs(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -48,10 +53,12 @@ type IconName =
   | 'car' | 'cutlery' | 'bolt' | 'gas' | 'phone' | 'pill'
   | 'shirt' | 'heart' | 'cash' | 'music' | 'book' | 'chart';
 
-function Icon({ name, size = 20, color = '#181513', strokeWidth = 1.7 }: {
+function Icon({ name, size = 20, color, strokeWidth = iconStroke }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
-  const sw = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  const { dark } = useThemeCtx();
+  const c = color ?? (dark ? colorsDark : colors).ink;
+  const sw = { stroke: c, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   const icons: Partial<Record<IconName, React.ReactNode>> = {
     'briefcase':     <><Rect x="3" y="8" width="18" height="13" rx="2" {...sw} /><Path {...sw} d="M8 8V5a2 2 0 012-2h4a2 2 0 012 2v3" /></>,
     'home':          <Path {...sw} d="M3 11l9-7 9 7v9h-6v-6h-6v6H3z" />,
@@ -65,12 +72,12 @@ function Icon({ name, size = 20, color = '#181513', strokeWidth = 1.7 }: {
     'trend-up':      <><Polyline {...sw} points="23 6 13.5 15.5 8.5 10.5 1 18" /><Polyline {...sw} points="17 6 23 6 23 12" /></>,
     'lock':          <><Rect x="3" y="11" width="18" height="11" rx="2" {...sw} /><Path {...sw} d="M7 11V7a5 5 0 0110 0v4" /></>,
     'arrow-right':   <Path {...sw} d="M5 12h14M12 5l7 7-7 7" />,
-    'trash':         <><Path {...sw} d="M3 6h18M19 6l-1 14H6L5 6M9 6V4h6v2" /></>,
-    'shopping-cart': <><Circle cx="9" cy="21" r="1" fill={color} stroke="none" /><Circle cx="20" cy="21" r="1" fill={color} stroke="none" /><Path {...sw} d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></>,
+    'trash':         <Path {...sw} d="M3 6h18M19 6l-1 14H6L5 6M9 6V4h6v2" />,
+    'shopping-cart': <><Circle cx="9" cy="21" r="1" fill={c} stroke="none" /><Circle cx="20" cy="21" r="1" fill={c} stroke="none" /><Path {...sw} d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></>,
     'pie':           <><Path {...sw} d="M12 3v9h9a9 9 0 11-9-9z" /><Path {...sw} d="M14 3a7 7 0 017 7h-7V3z" /></>,
-    'bell':          <><Path {...sw} d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" /></>,
+    'bell':          <Path {...sw} d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />,
     'car':           <><Path {...sw} d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h16a2 2 0 012 2v6a2 2 0 01-2 2h-2M5 17h14M7 17v2M17 17v2" /><Path {...sw} d="M5 9l2-4h10l2 4" /></>,
-    'cutlery':       <><Path {...sw} d="M3 3v6a3 3 0 006 0V3M6 3v18M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7" /></>,
+    'cutlery':       <Path {...sw} d="M3 3v6a3 3 0 006 0V3M6 3v18M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7" />,
     'bolt':          <Path {...sw} d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
     'gas':           <><Path {...sw} d="M4 22V8a2 2 0 012-2h8a2 2 0 012 2v14M2 22h18" /><Path {...sw} d="M16 8h2a2 2 0 012 2v4a2 2 0 002 2h0" /><Line x1="8" y1="8" x2="12" y2="8" {...sw} /></>,
     'phone':         <Path {...sw} d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />,
@@ -101,13 +108,21 @@ function catIcon(icono: string): IconName {
   return (map[icono] ?? 'sparkles') as IconName;
 }
 
+const META_ICONOS: Record<string, IconName> = {
+  briefcase: 'briefcase', home: 'home', shield: 'shield',
+  'credit-card': 'credit-card', sparkles: 'sparkles',
+  'trend-up': 'trend-up', pie: 'pie',
+};
+
 function FadeSlideIn({ children, delay = 0, style }: {
   children: React.ReactNode; delay?: number; style?: any;
 }) {
-  const anim = useRef(new Animated.Value(0)).current;
+  const reduce = useReducedMotion();
+  const anim = useRef(new Animated.Value(reduce ? 1 : 0)).current;
   useEffect(() => {
+    if (reduce) return;
     Animated.timing(anim, {
-      toValue: 1, duration: 300, delay,
+      toValue: 1, duration: motion.base, delay,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
@@ -121,136 +136,124 @@ function FadeSlideIn({ children, delay = 0, style }: {
   );
 }
 
-interface GoalCardProps {
-  meta: Meta;
-  dark: boolean;
-  t: typeof colors;
-  accent: string;
-  onPress: () => void;
-  onDelete: (id: string) => void;
-  onAvisosPress?: () => void;
+function pctDe(meta: Meta): number {
+  return meta.metaMonto > 0 ? Math.min(100, Math.round((meta.actualMonto / meta.metaMonto) * 100)) : 0;
 }
 
-function GoalCard({ meta, dark, t, accent, onPress, onDelete, onAvisosPress }: GoalCardProps) {
-  const pct = meta.metaMonto > 0
-    ? Math.min(100, Math.round((meta.actualMonto / meta.metaMonto) * 100))
-    : 0;
-  const vencida    = meta.diasRestantes <= 0;
-  const amber      = '#d4902a';
-  const isAmber    = pct >= 70;
-  const colorPct   = isAmber ? amber : accent;
-  const barColor   = isAmber ? amber : accent;
-  const colorDias  = vencida ? t.negative : t.ink3;
-  const labelDias  = vencida
+interface GoalRowProps {
+  meta: Meta;
+  t: typeof colors;
+  onPress: () => void;
+  onAvisosPress: () => void;
+}
+
+function GoalRow({ meta, t, onPress, onAvisosPress }: GoalRowProps) {
+  const pct = pctDe(meta);
+  const vencida = meta.diasRestantes <= 0;
+  const completa = pct >= 100;
+  const colorDias = vencida && !completa ? t.negative : t.muteText;
+  const labelDias = completa
+    ? 'Meta cumplida'
+    : vencida
     ? 'Vencida'
     : meta.diasRestantes == null
     ? 'Sin fecha límite'
     : `${meta.diasRestantes} días restantes`;
-  const iconBoxBg = dark ? '#0d2218' : 'rgba(63,142,90,0.1)';
-
-  const barAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(barAnim, {
-      toValue: pct, duration: 600, delay: 100,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, []);
-
-  const iconMap: Record<string, IconName> = {
-    briefcase: 'briefcase', home: 'home', shield: 'shield',
-    'credit-card': 'credit-card', sparkles: 'sparkles',
-    'trend-up': 'trend-up', pie: 'pie',
-  };
-  const iconName = (iconMap[meta.icono] ?? 'sparkles') as IconName;
+  const barColor = completa ? t.positive : t.accent;
+  const iconName = META_ICONOS[meta.icono] ?? 'sparkles';
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={[gc.card, { backgroundColor: t.card, borderColor: t.hairline }]}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        <View style={[gc.iconBox, { backgroundColor: iconBoxBg }]}>
-          <Icon name={iconName} size={18} color={accent} strokeWidth={1.7} />
+    <View style={gr.row}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        style={gr.main}
+        accessibilityRole="button"
+        accessibilityLabel={`${meta.titulo}, ${pct} por ciento, ${fmtGsFull(meta.actualMonto)} de ${fmtGsFull(meta.metaMonto)} guaraníes. ${labelDias}. Tocá para agregar ahorro`}
+      >
+        <View style={[gr.iconBox, { backgroundColor: t.accentBg }]}>
+          <Icon name={iconName} size={20} color={t.accent} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <Text style={[gc.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
-            <Text style={[gc.pct, { color: colorPct }]}>{pct}%</Text>
+          <View style={gr.line}>
+            <Text style={[gr.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
+            <Text style={[gr.pct, { color: completa ? t.positive : t.ink }]}>{pct}%</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-            <Icon name="calendar" size={11} color={colorDias} strokeWidth={1.7} />
-            <Text style={[gc.dias, { color: colorDias }]}>{labelDias}</Text>
+          <View style={[gr.track, { backgroundColor: t.hairline }]}>
+            <View style={[gr.fill, { width: `${pct}%`, backgroundColor: barColor }]} />
           </View>
-          <View style={[gc.track, { backgroundColor: t.hairline }]}>
-            <Animated.View style={[gc.fill, {
-              width: barAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
-              backgroundColor: barColor,
-            }]} />
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-            <Text style={[gc.montoActual, { color: t.ink2 }]}>Gs {fmtGs(meta.actualMonto)}</Text>
-            <Text style={[gc.montoMeta, { color: t.ink3 }]}>/ Gs {fmtGs(meta.metaMonto)}</Text>
+          <View style={gr.line}>
+            <Text style={[gr.monto, { color: t.ink2 }]}>Gs {fmtGs(meta.actualMonto)} / {fmtGs(meta.metaMonto)}</Text>
+            <Text style={[gr.dias, { color: colorDias }]}>{labelDias}</Text>
           </View>
         </View>
-      </View>
-
-      <View style={[gc.footer, { borderTopColor: t.hairline }]}>
-        {meta.esGrupo && (
-          <View style={[gc.tagGrupo, { backgroundColor: dark ? 'rgba(63,142,90,0.12)' : 'rgba(63,142,90,0.1)' }]}>
-            <Text style={[gc.tagGrupoTxt, { color: accent }]}>Grupo</Text>
-          </View>
-        )}
-        {meta.esGrupo && meta.miembros.length > 0 && (
-          <View style={{ flexDirection: 'row' }}>
-            {meta.miembros.slice(0, 3).map((m, i) => (
-              <View key={i} style={[gc.avatar, {
-                marginLeft: i === 0 ? 0 : -6,
-                backgroundColor: ['#B36A2A', '#3F8E5A', '#1F3A8A'][i % 3],
-                borderColor: t.bg,
-              }]}>
-                <Text style={[gc.avatarTxt, { color: t.bg }]}>{m}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-        <TouchableOpacity
-          style={{ marginLeft: 'auto' }}
-          onPress={() => onAvisosPress?.()}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Icon
-            name="bell"
-            size={15}
-            color={meta.notifCount > 0 ? amber : t.ink3}
-            strokeWidth={1.6}
-          />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onAvisosPress}
+        activeOpacity={0.7}
+        hitSlop={hit}
+        style={gr.bell}
+        accessibilityRole="button"
+        accessibilityLabel={meta.notifCount > 0 ? `Avisos de ${meta.titulo}, ${meta.notifCount} activos` : `Avisos de ${meta.titulo}`}
+      >
+        <Icon name="bell" size={20} color={meta.notifCount > 0 ? t.warn : t.muteText} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
-const gc = StyleSheet.create({
-  card:        { padding: 14, borderRadius: br.lg, borderWidth: 1 },
-  iconBox:     { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  titulo:      { fontSize: 14, fontWeight: '600', flex: 1, fontFamily: fonts.ui },
-  pct:         { fontSize: 14, fontWeight: '700', fontFamily: fonts.mono },
-  dias:        { fontSize: 11, fontFamily: fonts.ui },
-  track:       { height: 5, borderRadius: 3, marginTop: 8, overflow: 'hidden' },
-  fill:        { height: '100%', borderRadius: 3 },
-  montoActual: { fontFamily: fonts.mono, fontSize: 11 },
-  montoMeta:   { fontFamily: fonts.mono, fontSize: 11 },
-  footer:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
-  tagGrupo:    { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  tagGrupoTxt: { fontSize: 10.5, fontWeight: '600', fontFamily: fonts.ui },
-  tagNotif:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  tagNotifTxt: { fontSize: 10.5, fontWeight: '600', fontFamily: fonts.ui },
-  avatar:      { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt:   { fontSize: 9, fontWeight: '700', fontFamily: fonts.ui },
+const gr = StyleSheet.create({
+  row:    { flexDirection: 'row', alignItems: 'center', minHeight: 72 },
+  main:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  iconBox: { width: 44, height: 44, borderRadius: br.md, alignItems: 'center', justifyContent: 'center' },
+  line:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  titulo: { fontSize: 15, fontWeight: '600', flex: 1, fontFamily: fonts.ui },
+  pct:    { fontSize: 15, fontWeight: '700', fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
+  track:  { height: 6, borderRadius: 3, marginVertical: 8, overflow: 'hidden' },
+  fill:   { height: '100%', borderRadius: 3 },
+  monto:  { fontFamily: fonts.mono, fontSize: 12, fontVariant: ['tabular-nums'] },
+  dias:   { fontSize: 12, fontFamily: fonts.ui },
+  bell:   { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });
+
+function Sheet({ visible, onClose, t, children }: {
+  visible: boolean; onClose: () => void; t: typeof colors; children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity
+        style={{ flex: 1, backgroundColor: t.scrim }}
+        activeOpacity={1}
+        onPress={onClose}
+        accessibilityLabel="Cerrar"
+        accessibilityRole="button"
+      />
+      <View style={[sh.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 24 }]}>
+        <View style={[sh.pill, { backgroundColor: t.hairline }]} />
+        {children}
+      </View>
+    </Modal>
+  );
+}
+
+const sh = StyleSheet.create({
+  sheet: { borderTopLeftRadius: br.xl, borderTopRightRadius: br.xl, paddingHorizontal: 24, paddingTop: 12 },
+  pill:  { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+});
+
+function CloseBtn({ onPress, t }: { onPress: () => void; t: typeof colors }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -12 }}
+      accessibilityRole="button"
+      accessibilityLabel="Cerrar"
+    >
+      <Icon name="x" size={20} color={t.ink2} />
+    </TouchableOpacity>
+  );
+}
 
 const TIPOS: { id: TipoMeta; titulo: string; desc: string; icon: IconName }[] = [
   { id: 'solo',  titulo: 'Solo',        desc: 'Solo para vos.',           icon: 'home' },
@@ -259,10 +262,9 @@ const TIPOS: { id: TipoMeta; titulo: string; desc: string; icon: IconName }[] = 
   { id: 'largo', titulo: 'Largo plazo', desc: 'Más de 1 año.',            icon: 'trend-up' },
 ];
 
-function MetaTipoModal({ visible, onClose, accent, t, initialTipo }: {
-  visible: boolean; onClose: () => void; accent: string; t: typeof colors; initialTipo?: TipoMeta;
+function MetaTipoModal({ visible, onClose, t, initialTipo }: {
+  visible: boolean; onClose: () => void; t: typeof colors; initialTipo?: TipoMeta;
 }) {
-  const insets = useSafeAreaInsets();
   const [sel, setSel] = useState<TipoMeta>(initialTipo ?? 'solo');
   const router = useRouter();
 
@@ -274,68 +276,60 @@ function MetaTipoModal({ visible, onClose, accent, t, initialTipo }: {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
-        activeOpacity={1}
-        onPress={onClose}
-      />
-      <View style={[mt.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 16 }]}>
-        <View style={[mt.pill, { backgroundColor: t.ink3 }]} />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-          <View>
-            <Text style={[mt.eyebrow, { color: t.ink3 }]}>Nueva meta</Text>
-            <Text style={[mt.heading, { color: t.ink }]}>¿Qué tipo?</Text>
-            <Text style={[mt.sub, { color: t.ink3 }]}>Elegí cómo querés ahorrar.</Text>
-          </View>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Icon name="x" size={20} color={t.ink2} />
-          </TouchableOpacity>
+    <Sheet visible={visible} onClose={onClose} t={t}>
+      <View style={mt.hdr}>
+        <View style={{ flex: 1 }}>
+          <Text style={[mt.heading, { color: t.ink }]}>¿Qué tipo de meta?</Text>
+          <Text style={[mt.sub, { color: t.ink2 }]}>Elegí cómo querés ahorrar.</Text>
         </View>
-        <View style={mt.grid}>
-          {TIPOS.map(tp => {
-            const on = sel === tp.id;
-            return (
-              <TouchableOpacity
-                key={tp.id}
-                style={[mt.card, { backgroundColor: t.card, borderColor: on ? accent : t.hairline },
-                  on && { backgroundColor: 'rgba(63,142,90,0.07)' }]}
-                onPress={() => setSel(tp.id)}
-                activeOpacity={0.75}
-              >
-                <View style={[mt.iconBox, { backgroundColor: on ? accent : t.surface }]}>
-                  <Icon name={tp.icon} size={17} color={on ? colorsDark.bg : t.ink2} strokeWidth={1.7} />
-                </View>
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                  <Text style={[mt.cardTitulo, { color: t.ink }]}>{tp.titulo}</Text>
-                  <Text style={[mt.cardDesc, { color: t.ink3 }]}>{tp.desc}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <TouchableOpacity style={[mt.btn, { backgroundColor: accent }]} onPress={continuar} activeOpacity={0.85}>
-          <Text style={[mt.btnTxt, { color: colorsDark.bg }]}>Continuar</Text>
-          <Icon name="arrow-right" size={16} color={colorsDark.bg} strokeWidth={2} />
-        </TouchableOpacity>
+        <CloseBtn onPress={onClose} t={t} />
       </View>
-    </Modal>
+      <View style={mt.list}>
+        {TIPOS.map(tp => {
+          const on = sel === tp.id;
+          return (
+            <TouchableOpacity
+              key={tp.id}
+              style={[mt.item, { backgroundColor: on ? t.accentBg : 'transparent', borderColor: on ? t.accent : t.hairline }]}
+              onPress={() => setSel(tp.id)}
+              activeOpacity={0.75}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${tp.titulo}. ${tp.desc}`}
+            >
+              <Icon name={tp.icon} size={20} color={on ? t.accent : t.ink2} />
+              <View style={{ flex: 1 }}>
+                <Text style={[mt.itemTitulo, { color: t.ink }]}>{tp.titulo}</Text>
+                <Text style={[mt.itemDesc, { color: t.ink2 }]}>{tp.desc}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <TouchableOpacity
+        style={[mt.btn, { backgroundColor: t.accent }]}
+        onPress={continuar}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Continuar"
+      >
+        <Text style={[mt.btnTxt, { color: t.onAccent }]}>Continuar</Text>
+        <Icon name="arrow-right" size={18} color={t.onAccent} />
+      </TouchableOpacity>
+    </Sheet>
   );
 }
 
 const mt = StyleSheet.create({
-  sheet:      { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 22, paddingTop: 12 },
-  pill:       { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  eyebrow:    { fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui },
-  heading:    { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 22, lineHeight: 24, marginTop: 4, marginBottom: 2, fontWeight: '400' },
-  sub:        { fontSize: 12, lineHeight: 18, fontFamily: fonts.ui },
-  grid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  card:       { width: '47.5%', minHeight: 110, padding: 16, borderRadius: br.lg, borderWidth: 1, flexDirection: 'column', gap: 10 },
-  iconBox:    { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cardTitulo: { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
-  cardDesc:   { fontSize: 12, marginTop: 2, fontFamily: fonts.ui },
-  btn:        { height: 50, borderRadius: br.lg, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
-  btnTxt:     { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
+  hdr:       { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
+  heading:   { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 24, lineHeight: 28, fontWeight: '400' },
+  sub:       { fontSize: 14, lineHeight: 20, fontFamily: fonts.ui, marginTop: 4 },
+  list:      { gap: 8, marginBottom: 24 },
+  item:      { minHeight: 64, paddingHorizontal: 16, paddingVertical: 12, borderRadius: br.lg, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  itemTitulo: { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
+  itemDesc:  { fontSize: 13, marginTop: 2, fontFamily: fonts.ui },
+  btn:       { minHeight: 52, borderRadius: br.lg, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  btnTxt:    { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
 });
 
 const AVISO_TIPOS = [
@@ -345,15 +339,11 @@ const AVISO_TIPOS = [
   { ico: 'check' as IconName,     titulo: 'Meta completada',             desc: 'Celebración cuando alcanzás el 100% de tu objetivo.' },
 ];
 
-function AvisoSheet({ meta, visible, onClose, onRead, t, dark }: {
+function AvisoSheet({ meta, visible, onClose, onRead, t }: {
   meta: Meta | null; visible: boolean; onClose: () => void; onRead: () => void;
-  t: typeof colors; dark: boolean;
+  t: typeof colors;
 }) {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const amber  = '#d4902a';
-  const amberBg    = dark ? '#2a1208' : 'rgba(201,124,46,0.07)';
-  const amberBorder = dark ? '#3a2208' : 'rgba(201,124,46,0.18)';
 
   if (!meta) return null;
 
@@ -367,132 +357,90 @@ function AvisoSheet({ meta, visible, onClose, onRead, t, dark }: {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
-        activeOpacity={1} onPress={handleClose} />
-      <View style={[avs.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 20 }]}>
-        <View style={[avs.pill, { backgroundColor: t.hairline }]} />
-
-        <View style={avs.hdrRow}>
-          <View style={[avs.hdrIco, { backgroundColor: amberBg, borderColor: amberBorder }]}>
-            <Icon name="bell" size={18} color={amber} strokeWidth={1.6} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[avs.eyebrow, { color: t.ink3 }]}>Avisos de meta</Text>
-            <Text style={[avs.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
-          </View>
-          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Icon name="x" size={18} color={t.ink3} strokeWidth={1.7} />
-          </TouchableOpacity>
+    <Sheet visible={visible} onClose={handleClose} t={t}>
+      <View style={avs.hdrRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={[avs.eyebrow, { color: t.muteText }]}>Avisos de meta</Text>
+          <Text style={[avs.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
         </View>
-
-        <View style={[avs.countBox, { backgroundColor: amberBg, borderColor: amberBorder }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={[avs.countNum, { color: amber }]}>{meta.notifCount}</Text>
-            <View>
-              <Text style={[avs.countLbl, { color: amber }]}>
-                aviso{meta.notifCount !== 1 ? 's' : ''} activo{meta.notifCount !== 1 ? 's' : ''}
-              </Text>
-              <Text style={[avs.countSub, { color: amber, opacity: 0.6 }]}>
-                {esSistema ? 'configurados por el sistema' : 'ninguno activo aún'}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <Text style={[avs.secLabel, { color: t.ink3 }]}>Tipos de aviso</Text>
-        <View style={[avs.listBox, { borderColor: t.hairline }]}>
-          {mostrar.map((a, i) => (
-            <View key={i} style={[avs.avisoRow,
-              i < mostrar.length - 1 && { borderBottomWidth: 1, borderBottomColor: t.hairline }
-            ]}>
-              <View style={[avs.avIco, { backgroundColor: i < n ? amberBg : t.surface }]}>
-                <Icon name={a.ico} size={13} color={i < n ? amber : t.ink3} strokeWidth={1.6} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[avs.avTitulo, { color: i < n ? t.ink : t.ink3 }]}>{a.titulo}</Text>
-                <Text style={[avs.avDesc, { color: t.ink3 }]} numberOfLines={2}>{a.desc}</Text>
-              </View>
-              {i < n && (
-                <View style={[avs.dot, { backgroundColor: amber }]} />
-              )}
-            </View>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[avs.btnLink, { backgroundColor: t.card, borderColor: t.hairline }]}
-          onPress={() => { handleClose(); setTimeout(() => router.push('/recordatorios' as any), 300); }}
-          activeOpacity={0.75}
-        >
-          <View style={[avs.btnLinkIco, { backgroundColor: t.surface }]}>
-            <Icon name="bell" size={14} color={t.ink2} strokeWidth={1.6} />
-          </View>
-          <Text style={[avs.btnLinkTxt, { color: t.ink }]}>Gestionar recordatorios</Text>
-          <Icon name="arrow-right" size={14} color={t.ink3} strokeWidth={1.7} />
-        </TouchableOpacity>
+        <CloseBtn onPress={handleClose} t={t} />
       </View>
-    </Modal>
+
+      <Text style={[avs.count, { color: t.ink2 }]}>
+        <Text style={{ color: t.warn, fontFamily: fonts.mono, fontWeight: '700' }}>{meta.notifCount}</Text>
+        {` aviso${meta.notifCount !== 1 ? 's' : ''} activo${meta.notifCount !== 1 ? 's' : ''}, ${esSistema ? 'configurados por el sistema' : 'ninguno activo aún'}`}
+      </Text>
+
+      <View style={{ marginBottom: 16 }}>
+        {mostrar.map((a, i) => (
+          <View key={i} style={avs.avisoRow}>
+            <Icon name={a.ico} size={20} color={i < n ? t.warn : t.muteText} />
+            <View style={{ flex: 1 }}>
+              <Text style={[avs.avTitulo, { color: i < n ? t.ink : t.ink2 }]}>{a.titulo}</Text>
+              <Text style={[avs.avDesc, { color: t.ink2 }]} numberOfLines={2}>{a.desc}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <TouchableOpacity
+        style={[avs.btnLink, { backgroundColor: t.accentBg }]}
+        onPress={() => { handleClose(); setTimeout(() => router.push('/recordatorios' as any), motion.slow); }}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel="Gestionar recordatorios"
+      >
+        <Text style={[avs.btnLinkTxt, { color: t.accent }]}>Gestionar recordatorios</Text>
+        <Icon name="arrow-right" size={18} color={t.accent} />
+      </TouchableOpacity>
+    </Sheet>
   );
 }
 
 const avs = StyleSheet.create({
-  sheet:     { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 10 },
-  pill:      { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
-  hdrRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  hdrIco:    { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  eyebrow:   { fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui },
-  titulo:    { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui, marginTop: 1 },
-  countBox:  { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
-  countNum:  { fontFamily: fonts.mono, fontSize: 32, fontWeight: '700', letterSpacing: -1 },
-  countLbl:  { fontSize: 13, fontWeight: '600', fontFamily: fonts.ui },
-  countSub:  { fontSize: 11, fontFamily: fonts.ui, marginTop: 1 },
-  secLabel:  { fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 8 },
-  listBox:   { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginBottom: 14 },
-  avisoRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
-  avIco:     { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avTitulo:  { fontSize: 12, fontWeight: '600', fontFamily: fonts.ui },
-  avDesc:    { fontSize: 11, fontFamily: fonts.ui, marginTop: 1, lineHeight: 15 },
-  dot:       { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
-  btnLink:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, borderWidth: 1 },
-  btnLinkIco: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  btnLinkTxt: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: fonts.ui },
+  hdrRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  eyebrow:   { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui },
+  titulo:    { fontSize: 17, fontWeight: '600', fontFamily: fonts.ui, marginTop: 2 },
+  count:     { fontSize: 14, lineHeight: 20, fontFamily: fonts.ui, marginBottom: 16 },
+  avisoRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12 },
+  avTitulo:  { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
+  avDesc:    { fontSize: 13, fontFamily: fonts.ui, marginTop: 2, lineHeight: 18 },
+  btnLink:   { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: br.lg },
+  btnLinkTxt: { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
 });
 
-function GoalActionSheet({ meta, visible, onClose, t, dark, accent, onEdit, onDelete, onSaved }: {
+function GoalActionSheet({ meta, visible, onClose, t, onEdit, onDelete, onSaved, onCompleted }: {
   meta: Meta | null; visible: boolean; onClose: () => void;
-  t: typeof colors; dark: boolean; accent: string;
+  t: typeof colors;
   onEdit: () => void; onDelete: () => void; onSaved: () => void;
+  onCompleted: (titulo: string, monto: number) => void;
 }) {
-  const insets   = useSafeAreaInsets();
   const [str, setStr] = useState('');
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
   const num = parseGs(str);
 
-  useEffect(() => { if (!visible) setStr(''); }, [visible]);
+  useEffect(() => { if (!visible) { setStr(''); setErrorGuardar(null); } }, [visible]);
 
   if (!meta) return null;
 
-  const pct      = meta.metaMonto > 0 ? Math.min(100, Math.round((meta.actualMonto / meta.metaMonto) * 100)) : 0;
-  const amber    = '#d4902a';
-  const barColor = pct >= 70 ? amber : accent;
-  const pctColor = pct >= 70 ? amber : accent;
-  const iconBg   = dark ? '#0d2218' : 'rgba(63,142,90,0.1)';
-  const hdrBg    = dark ? '#0d2218' : 'rgba(63,142,90,0.05)';
-  const hdrBorder = dark ? '#1a3a28' : 'rgba(63,142,90,0.15)';
-  const iconMap: Record<string, IconName> = {
-    briefcase: 'briefcase', home: 'home', shield: 'shield',
-    'credit-card': 'credit-card', sparkles: 'sparkles',
-    'trend-up': 'trend-up', pie: 'pie',
-  };
-  const iconName = (iconMap[meta.icono] ?? 'sparkles') as IconName;
+  const pct = pctDe(meta);
+  const iconName = META_ICONOS[meta.icono] ?? 'sparkles';
 
   function guardar() {
-    if (num <= 0) return;
-    if (!meta) return;
-    agregarAhorroAMeta(meta.id, num);
-    Keyboard.dismiss();
-    onSaved();
-    onClose();
+    if (num <= 0 || !meta) return;
+    try {
+      const completaba = meta.metaMonto > 0 && meta.actualMonto >= meta.metaMonto;
+      const completa = meta.metaMonto > 0 && meta.actualMonto + num >= meta.metaMonto;
+      agregarAhorroAMeta(meta.id, num);
+      Keyboard.dismiss();
+      onSaved();
+      onClose();
+      if (completa && !completaba) {
+        setTimeout(() => onCompleted(meta.titulo, meta.metaMonto), motion.slow);
+      }
+    } catch {
+      setErrorGuardar('No pudimos guardar el ahorro. Probá de nuevo.');
+    }
   }
 
   function confirmarEliminar() {
@@ -503,139 +451,133 @@ function GoalActionSheet({ meta, visible, onClose, t, dark, accent, onEdit, onDe
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Eliminar', style: 'destructive', onPress: onDelete },
       ]);
-    }, 300);
+    }, motion.slow);
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { Keyboard.dismiss(); onClose(); }}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
-        activeOpacity={1} onPress={() => { Keyboard.dismiss(); onClose(); }} />
-      <View style={[gas.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 20 }]}>
-        <View style={[gas.pill, { backgroundColor: t.hairline }]} />
-
-        <View style={[gas.hdr, { backgroundColor: hdrBg, borderColor: hdrBorder }]}>
-          <View style={[gas.iconBox, { backgroundColor: iconBg }]}>
-            <Icon name={iconName} size={18} color={accent} strokeWidth={1.7} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[gas.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
-              <Text style={[gas.montoActual, { color: t.ink2 }]}>Gs {fmtGs(meta.actualMonto)}</Text>
-              <Text style={{ color: t.ink3, fontSize: 10 }}>·</Text>
-              <Text style={[gas.montoMeta, { color: t.ink3 }]}>/ Gs {fmtGs(meta.metaMonto)}</Text>
-            </View>
-          </View>
-          <Text style={[gas.pct, { color: pctColor }]}>{pct}%</Text>
+    <Sheet visible={visible} onClose={() => { Keyboard.dismiss(); onClose(); }} t={t}>
+      <View style={gas.hdr}>
+        <View style={[gas.iconBox, { backgroundColor: t.accentBg }]}>
+          <Icon name={iconName} size={20} color={t.accent} />
         </View>
-
-        <View style={[gas.track, { backgroundColor: t.hairline }]}>
-          <View style={[gas.fill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={[gas.titulo, { color: t.ink }]} numberOfLines={1}>{meta.titulo}</Text>
+          <Text style={[gas.monto, { color: t.ink2 }]}>Gs {fmtGs(meta.actualMonto)} / Gs {fmtGs(meta.metaMonto)}</Text>
         </View>
-
-        <Text style={[gas.label, { color: t.ink3 }]}>Agregar ahorro</Text>
-        <View style={[gas.inputRow, { backgroundColor: t.card, borderColor: t.hairline }]}>
-          <Text style={[gas.inputPfx, { color: t.ink2 }]}>Gs</Text>
-          <TextInput
-            style={[gas.input, { color: t.ink }]}
-            value={str}
-            onChangeText={v => setStr(formatGs(parseGs(v)))}
-            placeholder="0"
-            placeholderTextColor={t.ink3}
-            keyboardType="number-pad"
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[gas.btnP, { backgroundColor: accent, opacity: num > 0 ? 1 : 0.35 }]}
-          onPress={guardar} disabled={num <= 0} activeOpacity={0.85}
-        >
-          <Text style={[gas.btnPTxt, { color: colorsDark.bg }]}>Guardar ahorro</Text>
-        </TouchableOpacity>
-
-        <View style={[gas.sep, { backgroundColor: t.hairline }]} />
-
-        <TouchableOpacity style={gas.btnS} onPress={() => { onClose(); setTimeout(onEdit, 300); }} activeOpacity={0.7}>
-          <View style={[gas.btnSIco, { backgroundColor: t.surface }]}>
-            <Icon name="sparkles" size={14} color={t.ink2} strokeWidth={1.6} />
-          </View>
-          <Text style={[gas.btnSTxt, { color: t.ink }]}>Editar meta</Text>
-          <Icon name="arrow-right" size={14} color={t.ink3} strokeWidth={1.7} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={gas.btnD} onPress={confirmarEliminar} activeOpacity={0.7}>
-          <View style={[gas.btnSIco, { backgroundColor: dark ? 'rgba(168,64,31,0.15)' : 'rgba(168,64,31,0.08)' }]}>
-            <Icon name="trash" size={14} color={t.negative} strokeWidth={1.6} />
-          </View>
-          <Text style={[gas.btnDTxt, { color: t.negative }]}>Eliminar esta meta</Text>
-        </TouchableOpacity>
+        <Text style={[gas.pct, { color: t.ink }]}>{pct}%</Text>
       </View>
-    </Modal>
+
+      <View style={[gas.track, { backgroundColor: t.hairline }]}>
+        <View style={[gas.fill, { width: `${pct}%`, backgroundColor: pct >= 100 ? t.positive : t.accent }]} />
+      </View>
+
+      <Text style={[gas.label, { color: t.muteText }]}>Agregar ahorro</Text>
+      <View style={[gas.inputRow, { backgroundColor: t.card, borderColor: t.hairline }]}>
+        <Text style={[gas.inputPfx, { color: t.ink2 }]}>Gs</Text>
+        <TextInput
+          style={[gas.input, { color: t.ink }]}
+          value={str}
+          onChangeText={v => { setStr(formatGs(parseGs(v))); setErrorGuardar(null); }}
+          placeholder="0"
+          placeholderTextColor={t.muteText}
+          keyboardType="number-pad"
+          accessibilityLabel="Monto a ahorrar en guaraníes"
+        />
+      </View>
+
+      {errorGuardar && <View style={{ marginBottom: 12 }}><InlineError mensaje={errorGuardar} /></View>}
+
+      <TouchableOpacity
+        style={[gas.btnP, { backgroundColor: t.accent, opacity: num > 0 ? 1 : 0.4 }]}
+        onPress={guardar} disabled={num <= 0} activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: num <= 0 }}
+        accessibilityLabel="Guardar ahorro"
+      >
+        <Text style={[gas.btnPTxt, { color: t.onAccent }]}>Guardar ahorro</Text>
+      </TouchableOpacity>
+
+      <View style={[gas.sep, { backgroundColor: t.hairline }]} />
+
+      <TouchableOpacity
+        style={gas.btnS}
+        onPress={() => { onClose(); setTimeout(onEdit, motion.slow); }}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Editar meta"
+      >
+        <Text style={[gas.btnSTxt, { color: t.ink }]}>Editar meta</Text>
+        <Icon name="arrow-right" size={18} color={t.muteText} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={gas.btnS}
+        onPress={confirmarEliminar}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Eliminar esta meta"
+      >
+        <Text style={[gas.btnSTxt, { color: t.negative }]}>Eliminar esta meta</Text>
+        <Icon name="trash" size={18} color={t.negative} />
+      </TouchableOpacity>
+    </Sheet>
   );
 }
 
 const gas = StyleSheet.create({
-  sheet:    { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 10 },
-  pill:     { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
-  hdr:      { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
-  iconBox:  { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  titulo:   { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
-  montoActual: { fontSize: 12, fontFamily: fonts.mono },
-  montoMeta:   { fontSize: 12, fontFamily: fonts.mono },
-  pct:      { fontSize: 16, fontWeight: '700', fontFamily: fonts.mono },
-  track:    { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 16 },
+  hdr:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  iconBox:  { width: 44, height: 44, borderRadius: br.md, alignItems: 'center', justifyContent: 'center' },
+  titulo:   { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
+  monto:    { fontSize: 13, fontFamily: fonts.mono, marginTop: 2, fontVariant: ['tabular-nums'] },
+  pct:      { fontSize: 18, fontWeight: '700', fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
+  track:    { height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 24 },
   fill:     { height: '100%', borderRadius: 3 },
-  label:    { fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, height: 48, marginBottom: 12 },
-  inputPfx: { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 17 },
-  input:    { flex: 1, fontSize: 18, fontFamily: fonts.mono, paddingVertical: 0 },
-  btnP:     { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  btnPTxt:  { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
-  sep:      { height: 1, marginVertical: 14 },
-  btnS:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  btnSIco:  { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  btnSTxt:  { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: fonts.ui },
-  btnD:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  btnDTxt:  { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: fonts.ui },
+  label:    { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 8 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: br.md, borderWidth: 1, paddingHorizontal: 16, height: 52, marginBottom: 16 },
+  inputPfx: { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 18 },
+  input:    { flex: 1, fontSize: 20, fontFamily: fonts.mono, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  btnP:     { minHeight: 52, borderRadius: br.lg, alignItems: 'center', justifyContent: 'center' },
+  btnPTxt:  { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
+  sep:      { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  btnS:     { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  btnSTxt:  { fontSize: 15, fontWeight: '500', fontFamily: fonts.ui },
 });
 
-
-
-function SummaryCard({ total, metas, dark, accent, pctTotal }: {
-  total: number; metas: number; dark: boolean; accent: string; pctTotal: number;
+function SummaryRing({ total, metas, pctTotal, t }: {
+  total: number; metas: number; pctTotal: number; t: typeof colors;
 }) {
-  const bg     = dark ? '#0d2218' : 'rgba(63,142,90,0.07)';
-  const border = dark ? '#1a3a28' : 'rgba(63,142,90,0.2)';
-  const ringBg = dark ? '#1a3a28' : 'rgba(63,142,90,0.15)';
-  const R      = 24;
+  const R      = 28;
   const circ   = 2 * Math.PI * R;
   const filled = (pctTotal / 100) * circ;
   const mesLabel = new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' });
 
   return (
-    <View style={[sc.wrap, { backgroundColor: bg, borderColor: border }]}>
-      <View style={sc.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={[sc.eyebrow, { color: accent }]}>Ahorrado en metas</Text>
-          <Text style={[sc.monto, { color: accent }]}>Gs {fmtGsFull(total)}</Text>
-          <Text style={[sc.sub, { color: accent, opacity: 0.65 }]}>
-            {metas} meta{metas !== 1 ? 's' : ''} activa{metas !== 1 ? 's' : ''} · {mesLabel}
-          </Text>
-        </View>
-        <View style={sc.ringWrap}>
-          <Svg width={60} height={60} viewBox="0 0 60 60">
-            <G rotation="-90" origin="30, 30">
-              <Circle cx="30" cy="30" r={R} fill="none" stroke={ringBg} strokeWidth={6} />
-              <Circle
-                cx="30" cy="30" r={R} fill="none"
-                stroke={accent} strokeWidth={6}
-                strokeDasharray={[filled, circ]}
-                strokeLinecap="round"
-              />
-            </G>
-          </Svg>
-          <View style={sc.ringLabel}>
-            <Text style={[sc.ringPct, { color: accent }]}>{pctTotal}%</Text>
-          </View>
+    <View
+      style={sc.row}
+      accessible
+      accessibilityLabel={`Ahorrado en metas: ${fmtGsFull(total)} guaraníes, ${pctTotal} por ciento del objetivo total`}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[sc.eyebrow, { color: t.muteText }]}>Ahorrado en metas</Text>
+        <Text style={[sc.monto, { color: t.ink }]}>Gs {fmtGsFull(total)}</Text>
+        <Text style={[sc.sub, { color: t.ink2 }]}>
+          {metas} meta{metas !== 1 ? 's' : ''} · {mesLabel}
+        </Text>
+      </View>
+      <View style={sc.ringWrap}>
+        <Svg width={68} height={68} viewBox="0 0 68 68">
+          <G rotation="-90" origin="34, 34">
+            <Circle cx="34" cy="34" r={R} fill="none" stroke={t.hairline} strokeWidth={6} />
+            <Circle
+              cx="34" cy="34" r={R} fill="none"
+              stroke={t.accent} strokeWidth={6}
+              strokeDasharray={[filled, circ]}
+              strokeLinecap="round"
+            />
+          </G>
+        </Svg>
+        <View style={sc.ringLabel}>
+          <Text style={[sc.ringPct, { color: t.ink }]}>{pctTotal}%</Text>
         </View>
       </View>
     </View>
@@ -643,21 +585,18 @@ function SummaryCard({ total, metas, dark, accent, pctTotal }: {
 }
 
 const sc = StyleSheet.create({
-  wrap:      { marginHorizontal: 22, marginBottom: 14, padding: 16, borderRadius: 16, borderWidth: 1 },
-  row:       { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  eyebrow:   { fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 6 },
-  monto:     { fontFamily: fonts.mono, fontSize: 26, fontWeight: '700', letterSpacing: -0.5, marginBottom: 3 },
-  sub:       { fontSize: 11, fontFamily: fonts.ui },
-  ringWrap:  { position: 'relative', width: 60, height: 60, flexShrink: 0 },
+  row:       { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 24, marginBottom: 24 },
+  eyebrow:   { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 4 },
+  monto:     { fontFamily: fonts.mono, fontSize: 32, fontWeight: '600', letterSpacing: -1, marginBottom: 4, fontVariant: ['tabular-nums'] },
+  sub:       { fontSize: 13, fontFamily: fonts.ui },
+  ringWrap:  { position: 'relative', width: 68, height: 68 },
   ringLabel: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  ringPct:   { fontSize: 12, fontWeight: '700', fontFamily: fonts.mono },
+  ringPct:   { fontSize: 13, fontWeight: '700', fontFamily: fonts.mono },
 });
 
-function PresupuestosGrid({ presupuestos, t, dark, accent }: {
+function PresupuestosList({ presupuestos, t }: {
   presupuestos: PresupuestoConGasto[];
   t: typeof colors;
-  dark: boolean;
-  accent: string;
 }) {
   const router   = useRouter();
   const items    = presupuestos.slice(0, 4);
@@ -666,87 +605,77 @@ function PresupuestosGrid({ presupuestos, t, dark, accent }: {
   return (
     <View style={pg.wrap}>
       <View style={pg.hdr}>
-        <View>
-          <Text style={[pg.eyebrow, { color: t.ink3 }]}>Control de gasto</Text>
-          <Text style={[pg.title, { color: t.ink }]}>Presupuestos · {mesLabel}</Text>
-        </View>
+        <Text style={[pg.title, { color: t.ink }]}>Presupuestos de {mesLabel}</Text>
         <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+          style={pg.linkBtn}
           onPress={() => router.push('/presupuestos' as any)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Ver todos los presupuestos"
         >
-          <Text style={[pg.link, { color: accent }]}>Ver todo</Text>
-          <Icon name="arrow-right" size={12} color={accent} strokeWidth={2} />
+          <Text style={[pg.link, { color: t.accent }]}>Ver todo</Text>
         </TouchableOpacity>
       </View>
-      <View style={pg.grid}>
-        {items.map(p => {
-          const cat      = CATEGORIA_POR_ID[p.categoriaId];
-          const tinte    = cat?.tinte ?? '#888';
-          const over     = p.pct >= 100;
-          const iconBg   = `${tinte}${dark ? '22' : '18'}`;
-          const pctClr   = over ? t.negative : tinte;
-          const restante = p.montoLimite - p.gastado;
-          return (
-            <View key={p.id} style={[pg.card, { backgroundColor: t.card, borderColor: t.hairline }]}>
-              <View style={pg.cardTop}>
-                <View style={[pg.catIco, { backgroundColor: iconBg }]}>
-                  <Icon name={catIcon(cat?.icono ?? '')} size={13} color={tinte} strokeWidth={1.8} />
-                </View>
-                <Text style={[pg.pct, { color: pctClr }]}>{p.pct}%</Text>
-              </View>
-              <Text style={[pg.catName, { color: t.ink }]} numberOfLines={1}>{cat?.nombre ?? p.categoriaId}</Text>
-              <View style={[pg.bar, { backgroundColor: t.hairline }]}>
-                <View style={[pg.barFill, {
-                  width: `${Math.min(100, p.pct)}%` as any,
-                  backgroundColor: over ? t.negative : tinte,
-                }]} />
-              </View>
-              <View style={pg.cardRow}>
-                <Text style={[pg.usado, { color: over ? t.negative : t.ink3 }]}>
-                  Gs {fmtGs(p.gastado)}
-                </Text>
-                <Text style={[pg.rest, { color: over ? t.negative : t.ink3 }]}>
-                  {over ? `−Gs ${fmtGs(Math.abs(restante))}` : `Gs ${fmtGs(restante)}`}
-                </Text>
-              </View>
+      {items.map(p => {
+        const cat      = CATEGORIA_POR_ID[p.categoriaId];
+        const tinte    = cat?.tinte ?? t.muted;
+        const over     = p.pct >= 100;
+        const restante = p.montoLimite - p.gastado;
+        return (
+          <View
+            key={p.id}
+            style={pg.row}
+            accessible
+            accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${over ? 'excedido' : 'restan'} ${fmtGsFull(Math.abs(restante))} guaraníes`}
+          >
+            <View style={[pg.catIco, { backgroundColor: t.accentBg }]}>
+              <Icon name={catIcon(cat?.icono ?? '')} size={18} color={tinte} />
             </View>
-          );
-        })}
-      </View>
+            <View style={{ flex: 1 }}>
+              <View style={pg.line}>
+                <Text style={[pg.catName, { color: t.ink }]} numberOfLines={1}>{cat?.nombre ?? p.categoriaId}</Text>
+                <Text style={[pg.pct, { color: over ? t.negative : t.ink2 }]}>{p.pct}%</Text>
+              </View>
+              <View style={[pg.bar, { backgroundColor: t.hairline }]}>
+                <View style={[pg.barFill, { width: `${Math.min(100, p.pct)}%`, backgroundColor: over ? t.negative : tinte }]} />
+              </View>
+              <Text style={[pg.rest, { color: over ? t.negative : t.ink2 }]}>
+                {over ? `Excedido por Gs ${fmtGs(Math.abs(restante))}` : `Quedan Gs ${fmtGs(restante)}`}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
 const pg = StyleSheet.create({
-  wrap:    { paddingHorizontal: 22 },
-  hdr:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 10 },
-  eyebrow: { fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 2 },
-  title:   { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
-  link:    { fontSize: 11, fontFamily: fonts.ui, fontWeight: '500' },
-  grid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  card:    { width: '48.5%', padding: 10, borderRadius: 12, borderWidth: 1 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  catIco:  { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  pct:     { fontSize: 10, fontWeight: '600', fontFamily: fonts.mono },
-  catName: { fontSize: 12, fontWeight: '500', fontFamily: fonts.ui, marginBottom: 5 },
-  bar:     { height: 4, borderRadius: 2, overflow: 'hidden', marginBottom: 5 },
-  barFill: { height: '100%', borderRadius: 2 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  usado:   { fontSize: 10, fontFamily: fonts.mono },
-  rest:    { fontSize: 10, fontFamily: fonts.mono },
+  wrap:    { paddingHorizontal: 24 },
+  hdr:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, minHeight: 44 },
+  title:   { fontSize: 17, fontWeight: '600', fontFamily: fonts.ui },
+  linkBtn: { minHeight: 44, justifyContent: 'center' },
+  link:    { fontSize: 14, fontFamily: fonts.ui, fontWeight: '600' },
+  row:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  catIco:  { width: 40, height: 40, borderRadius: br.md, alignItems: 'center', justifyContent: 'center' },
+  line:    { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  catName: { fontSize: 14, fontWeight: '500', fontFamily: fonts.ui, flex: 1 },
+  pct:     { fontSize: 13, fontWeight: '600', fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
+  bar:     { height: 6, borderRadius: 3, overflow: 'hidden', marginVertical: 6 },
+  barFill: { height: '100%', borderRadius: 3 },
+  rest:    { fontSize: 12, fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
 });
 
 export default function CrecerScreen() {
   const { dark } = useThemeCtx();
   const t = dark ? colorsDark : colors;
-  const accent = '#3F8E5A';
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
 
   const [metas, setMetas]               = useState<Meta[]>([]);
   const [presupuestos, setPresupuestos] = useState<PresupuestoConGasto[]>([]);
   const [cargando, setCargando]         = useState(true);
+  const [error, setError]               = useState<string | null>(null);
   const [tab, setTab]                   = useState<'mias' | 'grupo'>('mias');
   const [showModal, setShowModal]       = useState(false);
   const [modalTipo, setModalTipo]       = useState<TipoMeta | undefined>(undefined);
@@ -755,15 +684,15 @@ export default function CrecerScreen() {
   const [avisoMeta, setAvisoMeta]       = useState<Meta | null>(null);
 
   const cargar = useCallback(() => {
-    const mesKey = new Date().toISOString().slice(0, 7);
-    setCargando(true);
+    const mesKey = localDateKey().slice(0, 7);
+    setError(null);
     try {
-      const data = getMetas();
-      setMetas(data);
+      setMetas(getMetas());
       setTotalAhorro(getTotalAhorradoEnMetas());
       setPresupuestos(getPresupuestosConGasto(mesKey));
-    } catch {
-      Alert.alert('Error', 'No se pudieron cargar las metas.');
+    } catch (e) {
+      console.error('Crecer error:', e);
+      setError('No pudimos cargar tus metas.');
     } finally {
       setCargando(false);
     }
@@ -774,22 +703,24 @@ export default function CrecerScreen() {
   const metasFiltradas = metas.filter(m => tab === 'mias' ? !m.esGrupo : m.esGrupo);
   const totalTarget    = metas.reduce((sum, m) => sum + m.metaMonto, 0);
   const pctTotal       = totalTarget > 0 ? Math.min(100, Math.round((totalAhorro / totalTarget) * 100)) : 0;
-  const tabActiveBg    = dark ? '#1c2a1c' : 'rgba(63,142,90,0.1)';
-  const tabActiveBorder = dark ? '#2d3d2d' : 'rgba(63,142,90,0.2)';
 
   function abrirNueva(tipo?: TipoMeta) {
     setModalTipo(tipo);
     setShowModal(true);
   }
 
-  function onCardPress(m: Meta) {
-    setActionMeta(m);
+  function celebrar(titulo: string, monto: number) {
+    router.push({ pathname: '/celebracion', params: { titulo, monto: String(monto) } } as any);
   }
 
   if (cargando) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
-        <ActivityIndicator color={accent} style={{ flex: 1 }} />
+        <View style={{ padding: 24, gap: 24 }} accessibilityLabel="Cargando metas">
+          <Skeleton width={140} height={32} />
+          <Skeleton width={220} height={40} radius={br.md} />
+          <SkeletonRows count={3} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -798,139 +729,115 @@ export default function CrecerScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}
       >
         <View style={s.headerRow}>
-          <View>
-            <Text style={[s.eyebrow, { color: t.ink3 }]}>Crecé</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.eyebrow, { color: t.muteText }]}>Crecé</Text>
             <Text style={[s.heading, { color: t.ink }]}>Tus metas</Text>
           </View>
           <TouchableOpacity
-            style={[s.btnNueva, { backgroundColor: tabActiveBg, borderColor: tabActiveBorder }]}
+            style={[s.btnNueva, { backgroundColor: t.accent }]}
             onPress={() => abrirNueva()}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Crear una meta nueva"
           >
-            <Icon name="plus" size={13} color={accent} strokeWidth={2} />
-            <Text style={[s.btnNuevaTxt, { color: accent }]}>Nueva</Text>
+            <Icon name="plus" size={16} color={t.onAccent} strokeWidth={2} />
+            <Text style={[s.btnNuevaTxt, { color: t.onAccent }]}>Nueva</Text>
           </TouchableOpacity>
         </View>
 
+        {error && (
+          <View style={{ paddingHorizontal: 24, marginBottom: 16 }}>
+            <InlineError mensaje={error} onReintentar={cargar} />
+          </View>
+        )}
+
         {metas.length > 0 && (
-          <FadeSlideIn delay={50}>
-            <SummaryCard
-              total={totalAhorro}
-              metas={metas.length}
-              dark={dark}
-              accent={accent}
-              pctTotal={pctTotal}
-            />
+          <FadeSlideIn delay={0}>
+            <SummaryRing total={totalAhorro} metas={metas.length} pctTotal={pctTotal} t={t} />
           </FadeSlideIn>
         )}
 
         {metas.length > 0 && (
-          <FadeSlideIn delay={100}>
-            <View style={s.tabs}>
-              {([
-                ['mias',  'Mis metas',   metas.filter(m => !m.esGrupo).length],
-                ['grupo', 'Compartidas', metas.filter(m =>  m.esGrupo).length],
-              ] as [typeof tab, string, number][]).map(([k, l, n]) => (
-                <TouchableOpacity
-                  key={k}
-                  style={[s.tab,
-                    tab === k
-                      ? { backgroundColor: tabActiveBg, borderColor: tabActiveBorder }
-                      : { borderColor: 'transparent' },
-                  ]}
-                  onPress={() => setTab(k)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[s.tabTxt, { color: tab === k ? accent : t.ink2 }]}>{l}</Text>
-                  <View style={[s.tabBadge, {
-                    backgroundColor: tab === k
-                      ? dark ? 'rgba(63,142,90,0.15)' : 'rgba(63,142,90,0.12)'
-                      : t.surface,
-                  }]}>
-                    <Text style={[s.tabBadgeTxt, { color: tab === k ? accent : t.ink3 }]}>{n}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </FadeSlideIn>
+          <View style={s.tabs} accessibilityRole="tablist">
+            {([
+              ['mias',  'Mis metas',   metas.filter(m => !m.esGrupo).length],
+              ['grupo', 'Compartidas', metas.filter(m =>  m.esGrupo).length],
+            ] as [typeof tab, string, number][]).map(([k, l, n]) => (
+              <TouchableOpacity
+                key={k}
+                style={[s.tab, { backgroundColor: tab === k ? t.accentBg : 'transparent' }]}
+                onPress={() => setTab(k)}
+                activeOpacity={0.75}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === k }}
+                accessibilityLabel={`${l}, ${n}`}
+              >
+                <Text style={[s.tabTxt, { color: tab === k ? t.accent : t.ink2 }]}>{l}</Text>
+                <Text style={[s.tabBadgeTxt, { color: tab === k ? t.accent : t.muteText }]}>{n}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
 
         <View style={s.list}>
           {metas.length === 0 ? (
-            <View style={[s.emptyBox, { borderColor: t.hairline }]}>
-              <Icon name="sparkles" size={28} color={accent} strokeWidth={1.5} />
-              <Text style={[s.emptyTitle, { color: t.ink }]}>Empezá a crecer</Text>
-              <Text style={[s.emptyTxt, { color: t.ink3 }]}>
-                Creá una meta de ahorro para alcanzar tus objetivos.
-              </Text>
-              <TouchableOpacity
-                style={[s.emptyBtn, { backgroundColor: accent }]}
-                onPress={() => abrirNueva()}
-                activeOpacity={0.8}
-              >
-                <Icon name="plus" size={14} color={colorsDark.bg} strokeWidth={2} />
-                <Text style={[s.emptyBtnTxt, { color: colorsDark.bg }]}>Nueva meta</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              titulo="Empezá a crecer"
+              texto="Creá una meta de ahorro, por ejemplo un fondo de emergencia, y seguí tu avance acá."
+              accion="Crear mi primera meta"
+              onAccion={() => abrirNueva()}
+            />
+          ) : metasFiltradas.length === 0 ? (
+            <EmptyState
+              titulo={tab === 'mias' ? 'No tenés metas personales' : 'No tenés metas compartidas'}
+              texto="Creá una nueva meta para empezar a ahorrar."
+              accion="Nueva meta"
+              onAccion={() => abrirNueva(tab === 'grupo' ? 'grupo' : 'solo')}
+            />
           ) : (
-            metasFiltradas.map((m, i) => {
-              const pct = m.metaMonto > 0
-                ? Math.min(100, Math.round((m.actualMonto / m.metaMonto) * 100))
-                : 0;
-              return (
-                <FadeSlideIn key={m.id} delay={150 + i * 80}>
-                  <GoalCard
-                    meta={m}
-                    dark={dark}
-                    t={t}
-                    accent={accent}
-                    onPress={() => onCardPress(m)}
-                    onAvisosPress={() => setAvisoMeta(m)}
-                    onDelete={id => {
-                      Alert.alert('Eliminar meta', `¿Eliminar "${m.titulo}"?`, [
-                        { text: 'Cancelar', style: 'cancel' },
-                        { text: 'Eliminar', style: 'destructive', onPress: () => { deleteMeta(id); cargar(); } },
-                      ]);
-                    }}
-                  />
-                </FadeSlideIn>
-              );
-            })
+            metasFiltradas.map((m, i) => (
+              <FadeSlideIn key={m.id} delay={i * 60}>
+                <GoalRow
+                  meta={m}
+                  t={t}
+                  onPress={() => setActionMeta(m)}
+                  onAvisosPress={() => setAvisoMeta(m)}
+                />
+                {i < metasFiltradas.length - 1 && <View style={[s.divider, { backgroundColor: t.hairline }]} />}
+              </FadeSlideIn>
+            ))
           )}
         </View>
 
-        {presupuestos.length > 0 ? (
-          <FadeSlideIn delay={200 + metasFiltradas.length * 80}>
-            <View style={{ marginTop: 20 }}>
-              <PresupuestosGrid presupuestos={presupuestos} t={t} dark={dark} accent={accent} />
+        <View style={{ marginTop: 32 }}>
+          {presupuestos.length > 0 ? (
+            <PresupuestosList presupuestos={presupuestos} t={t} />
+          ) : (
+            <View style={{ paddingHorizontal: 24 }}>
+              <Text style={[s.secTitulo, { color: t.ink }]}>Presupuestos</Text>
+              <Text style={[s.secTxt, { color: t.ink2 }]}>
+                Poné un tope mensual por categoría y mirá cuánto te queda.
+              </Text>
+              <TouchableOpacity
+                style={[s.secBtn, { backgroundColor: t.accentBg }]}
+                onPress={() => router.push('/presupuestos' as any)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Crear un presupuesto"
+              >
+                <Text style={[s.secBtnTxt, { color: t.accent }]}>Crear un presupuesto</Text>
+              </TouchableOpacity>
             </View>
-          </FadeSlideIn>
-        ) : (
-          <FadeSlideIn delay={200 + metasFiltradas.length * 80}>
-            <TouchableOpacity
-              style={[s.presupCard, { backgroundColor: t.card, borderColor: t.hairline }]}
-              onPress={() => router.push('/presupuestos' as any)}
-              activeOpacity={0.8}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={[s.presupEyebrow, { color: t.ink3 }]}>Control de gasto</Text>
-                <Text style={[s.presupTitle, { color: t.ink }]}>
-                  Presupuestos · {new Date().toLocaleDateString('es-PY', { month: 'long' })}
-                </Text>
-              </View>
-              <Icon name="arrow-right" size={16} color={t.ink3} strokeWidth={1.7} />
-            </TouchableOpacity>
-          </FadeSlideIn>
-        )}
+          )}
+        </View>
       </ScrollView>
 
       <MetaTipoModal
         visible={showModal}
         onClose={() => setShowModal(false)}
-        accent={accent}
         t={t}
         initialTipo={modalTipo}
       />
@@ -946,7 +853,6 @@ export default function CrecerScreen() {
           }
         }}
         t={t}
-        dark={dark}
       />
 
       <GoalActionSheet
@@ -954,11 +860,10 @@ export default function CrecerScreen() {
         visible={actionMeta !== null}
         onClose={() => setActionMeta(null)}
         t={t}
-        dark={dark}
-        accent={accent}
         onEdit={() => router.push({ pathname: '/meta/nueva', params: { id: actionMeta?.id } } as any)}
         onDelete={() => { if (actionMeta) { deleteMeta(actionMeta.id); setActionMeta(null); cargar(); } }}
         onSaved={cargar}
+        onCompleted={celebrar}
       />
     </SafeAreaView>
   );
@@ -966,47 +871,33 @@ export default function CrecerScreen() {
 
 const s = StyleSheet.create({
   headerRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 22, paddingTop: 8, paddingBottom: 14,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 24, paddingTop: 8, paddingBottom: 24,
   },
   eyebrow: {
-    fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase',
-    fontWeight: '600', fontFamily: fonts.ui, marginBottom: 2,
+    fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase',
+    fontWeight: '600', fontFamily: fonts.ui, marginBottom: 4,
   },
   heading: {
     fontFamily: fonts.display, fontStyle: 'italic', fontWeight: '400',
-    fontSize: 28, lineHeight: 30, letterSpacing: -0.5,
+    fontSize: 30, lineHeight: 34, letterSpacing: -0.6,
   },
   btnNueva: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, borderWidth: 0.5,
-    marginTop: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, minHeight: 44, borderRadius: br.full,
   },
-  btnNuevaTxt: { fontSize: 12, fontWeight: '500', fontFamily: fonts.ui },
-  tabs:        { flexDirection: 'row', gap: 6, paddingHorizontal: 22, marginBottom: 14 },
+  btnNuevaTxt: { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
+  tabs:        { flexDirection: 'row', gap: 8, paddingHorizontal: 24, marginBottom: 8 },
   tab: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 0.5,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, minHeight: 44, borderRadius: br.full,
   },
-  tabTxt:      { fontSize: 12, fontWeight: '500', fontFamily: fonts.ui },
-  tabBadge:    { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999 },
-  tabBadgeTxt: { fontSize: 11, fontWeight: '600', fontFamily: fonts.ui },
-  list:        { paddingHorizontal: 22, gap: 12, flexDirection: 'column' },
-  emptyBox: {
-    padding: 32, borderRadius: br.lg, borderWidth: 1, borderStyle: 'dashed',
-    alignItems: 'center', gap: 12,
-  },
-  emptyTitle: { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
-  emptyTxt: { fontSize: 13, lineHeight: 20, textAlign: 'center', fontFamily: fonts.ui },
-  emptyBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, marginTop: 4,
-  },
-  emptyBtnTxt: { fontSize: 13, fontWeight: '600', fontFamily: fonts.ui },
-  presupCard: {
-    flexDirection: 'row', alignItems: 'center', padding: 16,
-    borderRadius: br.lg, borderWidth: 1, marginHorizontal: 22, marginTop: 20,
-  },
-  presupEyebrow: { fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 3 },
-  presupTitle:   { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
+  tabTxt:      { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
+  tabBadgeTxt: { fontSize: 13, fontWeight: '600', fontFamily: fonts.mono },
+  list:        { paddingHorizontal: 24 },
+  divider:     { height: StyleSheet.hairlineWidth },
+  secTitulo:   { fontSize: 17, fontWeight: '600', fontFamily: fonts.ui, marginBottom: 4 },
+  secTxt:      { fontSize: 14, lineHeight: 20, fontFamily: fonts.ui, marginBottom: 16 },
+  secBtn:      { minHeight: 48, borderRadius: br.md, alignItems: 'center', justifyContent: 'center' },
+  secBtnTxt:   { fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
 });

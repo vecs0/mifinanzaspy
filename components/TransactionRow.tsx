@@ -55,25 +55,28 @@ export function TransactionRow({ transaccion: tx, moneda = 'PYG', onPress }: Pro
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        paddingVertical: 10,
+        paddingVertical: 12,
+        minHeight: 56,
       }}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${tx.descripcion || cat?.nombre || 'Transacción'}, ${tx.monto < 0 ? 'gasto' : 'ingreso'} de ${Math.abs(tx.monto)} guaraníes, ${formatFecha(tx.fecha)}`}
     >
       <CategoriaChip categoriaId={tx.categoriaId} size="md" />
 
       <View style={{ flex: 1, gap: 3 }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '500', color: t.ink }} numberOfLines={1}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: t.ink }} numberOfLines={1}>
           {tx.descripcion || cat?.nombre || 'Transacción'}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           {esEfectivo ? (
             <View style={{
               paddingHorizontal: 5, paddingVertical: 1,
-              backgroundColor: dark ? '#0d2218' : '#d8f0e6',
+              backgroundColor: t.positiveBg,
               borderRadius: 4,
             }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: dark ? '#4db88a' : '#2d7a56' }}>Efectivo</Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: t.positive }}>Efectivo</Text>
             </View>
           ) : banco ? (
             <Text style={{ fontSize: 11.5, color: t.muteText }}>{banco.corto}</Text>
@@ -81,7 +84,7 @@ export function TransactionRow({ transaccion: tx, moneda = 'PYG', onPress }: Pro
           {(esEfectivo || banco) && <Text style={{ fontSize: 11, color: t.ink3 }}>·</Text>}
           <Text style={{ fontSize: 11.5, color: t.muteText }}>{formatFecha(tx.fecha)}</Text>
           <Text style={{ fontSize: 11, color: t.ink3 }}>·</Text>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: cat?.tinte ?? t.muteText }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: t.muteText }}>
             {FUENTE_LABEL[tx.fuente] ?? tx.fuente}
           </Text>
         </View>

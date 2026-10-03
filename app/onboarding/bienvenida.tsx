@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Rect, Circle } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { colors, colorsDark, fonts } from '@/theme/design-system';
 
 
@@ -147,7 +147,7 @@ function useStyles(t: typeof colors) {
     featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     featureIcon: {
       width: 32, height: 32, borderRadius: 10,
-      backgroundColor: 'rgba(24,21,19,0.04)',
+      backgroundColor: t.surface,
       alignItems: 'center', justifyContent: 'center',
     },
     featureLabel: { fontSize: 14, color: t.ink2, fontFamily: fonts.ui },

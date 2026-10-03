@@ -1,53 +1,41 @@
 /**
  * presupuestos.tsx
- * Responsabilidad: Gestión de presupuestos con donut SVG y grid 2-col
+ * Responsabilidad: Gestión de presupuestos mensuales por categoría
  * Usado por: expo-router
  * Depende de: budgets, categories
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Modal, Alert, TextInput, Animated, Easing, Keyboard,
+  Modal, Alert, TextInput, Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import Svg, { Circle, Text as SvgText, Path } from 'react-native-svg';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { Icon } from '@/components/Icon';
+import { EmptyState } from '@/components/EmptyState';
+import { InlineError } from '@/components/InlineError';
+import { SkeletonRows } from '@/components/Skeleton';
+import { localDateKey } from '@/services/dateKeys';
 import { CATEGORIAS } from '@/constants/categories';
-import { colors, colorsDark, fonts, borderRadius as br } from '@/theme/design-system';
+import { colors, colorsDark, fonts, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
 import {
   getPresupuestosConGasto, setPresupuesto, deletePresupuesto,
   type PresupuestoConGasto,
 } from '@/services/budgets';
 
-function FadeSlideIn({ children, delay = 0, style }: {
-  children: React.ReactNode; delay?: number; style?: any;
-}) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: 1, duration: 300, delay,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, []);
-  return (
-    <Animated.View style={[{ opacity: anim, transform: [{ translateY: anim.interpolate({
-      inputRange: [0, 1], outputRange: [8, 0],
-    }) }] }, style]}>
-      {children}
-    </Animated.View>
-  );
+function fmtK(n: number): string {
+  return `${Math.round(Math.abs(n) / 1000).toLocaleString('es-PY')}K`;
 }
 
-function DonutChart({ pct, accent, t }: { pct: number; accent: string; t: typeof colors }) {
+function DonutChart({ pct, t }: { pct: number; t: typeof colors }) {
   const R = 42;
   const circ = 2 * Math.PI * R;
   const dash = (Math.min(pct, 100) / 100) * circ;
-  const fillColor = pct > 100 ? t.negative : accent;
+  const fillColor = pct > 100 ? t.negative : t.accent;
   return (
-    <Svg width={104} height={104} viewBox="0 0 104 104">
+    <Svg width={104} height={104} viewBox="0 0 104 104" accessibilityLabel={`${pct} por ciento del presupuesto gastado`}>
       <Circle cx={52} cy={52} r={R} fill="none" stroke={t.hairline} strokeWidth={12} />
       <Circle cx={52} cy={52} r={R} fill="none" stroke={fillColor} strokeWidth={12}
         strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
@@ -60,80 +48,70 @@ function DonutChart({ pct, accent, t }: { pct: number; accent: string; t: typeof
   );
 }
 
-
-function BudgetCard({ p, t, dark, onDelete }: { p: PresupuestoConGasto; t: typeof colors; dark: boolean; onDelete: () => void }) {
+function BudgetRow({ p, t, onDelete }: { p: PresupuestoConGasto; t: typeof colors; onDelete: () => void }) {
   const exceso   = p.pct > 100;
   const restante = p.montoLimite - p.gastado;
   const cat      = CATEGORIAS.find(c => c.id === p.categoriaId);
-  const tinte    = cat?.tinte ?? '#888';
+  const tinte    = cat?.tinte ?? t.muted;
   const barColor = exceso ? t.negative : tinte;
-  const iconBg   = `${tinte}${dark ? '22' : '18'}`;
-  const barAnim  = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(barAnim, {
-      toValue: Math.min(100, p.pct), duration: 600, delay: 100,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, []);
 
   return (
-    <View style={[bc.card, { backgroundColor: t.card, borderColor: t.hairline }]}>
-      <View style={bc.top}>
-        <View style={[bc.iconCircle, { backgroundColor: iconBg }]}>
-          <Icon name={cat?.icono ?? 'dots'} size={13} color={tinte} />
+    <View style={bc.row}>
+      <View style={[bc.iconCircle, { backgroundColor: t.accentBg }]}>
+        <Icon name={cat?.icono ?? 'dots'} size={18} color={tinte} />
+      </View>
+      <View
+        style={{ flex: 1 }}
+        accessible
+        accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${exceso ? 'excedido' : 'restan'} ${Math.abs(restante)} guaraníes`}
+      >
+        <View style={bc.line}>
+          <Text style={[bc.catNombre, { color: t.ink }]} numberOfLines={1}>
+            {cat?.nombre ?? p.categoriaId}
+          </Text>
+          <Text style={[bc.pct, { color: exceso ? t.negative : t.ink }]}>{p.pct}%</Text>
         </View>
-        <Text style={[bc.catNombre, { color: t.ink }]} numberOfLines={1}>
-          {cat?.nombre ?? p.categoriaId}
-        </Text>
-        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none"
-            stroke={t.ink3} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-            <Path d="M18 6L6 18M6 6l12 12" />
-          </Svg>
-        </TouchableOpacity>
+        <View style={[bc.track, { backgroundColor: t.hairline }]}>
+          <View style={[bc.fill, { width: `${Math.min(100, p.pct)}%`, backgroundColor: barColor }]} />
+        </View>
+        <View style={bc.line}>
+          <Text style={[bc.usado, { color: t.ink2 }]}>Gs {fmtK(p.gastado)} de {fmtK(p.montoLimite)}</Text>
+          <Text style={[bc.usado, { color: exceso ? t.negative : t.ink2 }]}>
+            {exceso ? `Excedido Gs ${fmtK(restante)}` : `Quedan Gs ${fmtK(restante)}`}
+          </Text>
+        </View>
       </View>
-
-      <View style={bc.row}>
-        <Text style={[bc.pct, { color: exceso ? t.negative : tinte }]}>{p.pct}%</Text>
-        <Text style={[bc.restante, { color: exceso ? t.negative : t.ink3 }]}>
-          {exceso ? `−Gs ${Math.abs(restante / 1000).toFixed(0)}K` : `Gs ${(restante / 1000).toFixed(0)}K rest.`}
-        </Text>
-      </View>
-
-      <View style={[bc.track, { backgroundColor: t.hairline }]}>
-        <Animated.View style={[bc.fill, {
-          width: barAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
-          backgroundColor: barColor,
-        }]} />
-      </View>
-
-      <View style={bc.row}>
-        <Text style={[bc.usado, { color: t.ink3 }]}>Gs {(p.gastado / 1000).toFixed(0)}K usado</Text>
-        <Text style={[bc.limite, { color: t.ink3 }]}>/ Gs {(p.montoLimite / 1000).toFixed(0)}K</Text>
-      </View>
+      <TouchableOpacity
+        onPress={onDelete}
+        hitSlop={hit}
+        style={bc.del}
+        accessibilityRole="button"
+        accessibilityLabel={`Eliminar presupuesto de ${cat?.nombre ?? p.categoriaId}`}
+      >
+        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+          stroke={t.muteText} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M18 6L6 18M6 6l12 12" />
+        </Svg>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const bc = StyleSheet.create({
-  card:       { padding: 12, borderRadius: br.lg, borderWidth: 1 },
-  top:        { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
-  iconCircle: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  catNombre:  { flex: 1, fontSize: 12, fontWeight: '600', fontFamily: fonts.ui },
-  row:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 },
-  pct:        { fontSize: 11, fontWeight: '700', fontFamily: fonts.mono },
-  restante:   { fontSize: 10, fontFamily: fonts.mono },
-  track:      { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 5 },
+  row:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
+  iconCircle: { width: 44, height: 44, borderRadius: br.md, alignItems: 'center', justifyContent: 'center' },
+  line:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  catNombre:  { flex: 1, fontSize: 15, fontWeight: '600', fontFamily: fonts.ui },
+  pct:        { fontSize: 14, fontWeight: '700', fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
+  track:      { height: 6, borderRadius: 3, overflow: 'hidden', marginVertical: 8 },
   fill:       { height: '100%', borderRadius: 3 },
-  usado:      { fontSize: 10, fontFamily: fonts.mono },
-  limite:     { fontSize: 10, fontFamily: fonts.mono },
+  usado:      { fontSize: 12, fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
+  del:        { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -12 },
 });
 
-function AgregarModal({ visible, onClose, onAgregar, existentes, t, dark }: {
+function AgregarModal({ visible, onClose, onAgregar, existentes, t }: {
   visible: boolean; onClose: () => void; onAgregar: (catId: string, monto: number) => void;
-  existentes: string[]; t: typeof colors; dark: boolean;
+  existentes: string[]; t: typeof colors;
 }) {
   const insets      = useSafeAreaInsets();
   const [montoStr, setMontoStr]   = useState('500.000');
@@ -160,26 +138,30 @@ function AgregarModal({ visible, onClose, onAgregar, existentes, t, dark }: {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { Keyboard.dismiss(); onClose(); }}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
-        activeOpacity={1} onPress={() => { Keyboard.dismiss(); onClose(); }} />
-      <View style={[am.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 16 }]}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: t.scrim }}
+        activeOpacity={1} onPress={() => { Keyboard.dismiss(); onClose(); }}
+        accessibilityRole="button" accessibilityLabel="Cerrar" />
+      <View style={[am.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 24 }]}>
         <View style={[am.pill, { backgroundColor: t.hairline }]} />
 
         <View style={am.hdrRow}>
-          <View>
-            <Text style={[am.eyebrow, { color: t.ink3 }]}>Nuevo presupuesto</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[am.eyebrow, { color: t.muteText }]}>Nuevo presupuesto</Text>
             <Text style={[am.heading, { color: t.ink }]}>¿Cuánto querés gastar?</Text>
           </View>
-          <TouchableOpacity onPress={() => { Keyboard.dismiss(); onClose(); }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none"
-              stroke={t.ink3} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <TouchableOpacity
+            onPress={() => { Keyboard.dismiss(); onClose(); }}
+            style={am.closeBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar">
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none"
+              stroke={t.ink2} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
               <Path d="M18 6L6 18M6 6l12 12" />
             </Svg>
           </TouchableOpacity>
         </View>
 
-        <Text style={[am.label, { color: t.ink3 }]}>Límite mensual</Text>
+        <Text style={[am.label, { color: t.muteText }]}>Límite mensual</Text>
         <View style={[am.inputRow, { borderColor: t.hairline, backgroundColor: t.card }]}>
           <Text style={[am.inputPfx, { color: t.ink2 }]}>Gs</Text>
           <TextInput
@@ -188,57 +170,43 @@ function AgregarModal({ visible, onClose, onAgregar, existentes, t, dark }: {
             onChangeText={v => setMontoStr(formatMonto(v))}
             keyboardType="number-pad"
             placeholder="500.000"
-            placeholderTextColor={t.ink3}
+            placeholderTextColor={t.muteText}
             maxLength={14}
+            accessibilityLabel="Límite mensual en guaraníes"
           />
         </View>
         {!montoValido && montoStr.length > 0 && (
-          <Text style={[am.error, { color: t.negative }]}>Mínimo Gs 1.000</Text>
+          <Text style={[am.error, { color: t.negative }]}>El mínimo es Gs 1.000</Text>
         )}
 
-        <Text style={[am.label, { color: t.ink3, marginTop: 14 }]}>Categoría</Text>
+        <Text style={[am.label, { color: t.muteText, marginTop: 16 }]}>Categoría</Text>
 
         {disponibles.length === 0 ? (
-          <View style={[am.emptyBox, { borderColor: t.hairline }]}>
-            <Text style={[am.emptyTxt, { color: t.ink3 }]}>
-              Ya tenés presupuesto para todas las categorías de egreso.
-            </Text>
-          </View>
+          <Text style={[am.emptyTxt, { color: t.ink2 }]}>
+            Ya tenés presupuesto para todas las categorías de egreso.
+          </Text>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 220 }}>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 232 }}>
             <View style={am.catGrid}>
               {disponibles.map(cat => {
-                const sel    = catSel === cat.id;
-                const iconBg = sel
-                  ? cat.tinte
-                  : `${cat.tinte}${dark ? '22' : '18'}`;
-                const iconColor = sel ? '#fff' : cat.tinte;
+                const sel = catSel === cat.id;
                 return (
                   <TouchableOpacity
                     key={cat.id}
-                    style={[am.catCard, {
-                      backgroundColor: sel
-                        ? `${cat.tinte}${dark ? '22' : '12'}`
-                        : t.card,
-                      borderColor: sel ? cat.tinte : t.hairline,
+                    style={[am.catChip, {
+                      backgroundColor: sel ? t.accentBg : 'transparent',
+                      borderColor: sel ? t.accent : t.hairline,
                     }]}
                     onPress={() => setCatSel(sel ? null : cat.id)}
                     activeOpacity={0.75}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: sel }}
+                    accessibilityLabel={cat.nombre}
                   >
-                    <View style={[am.catIco, { backgroundColor: iconBg }]}>
-                      <Icon name={cat.icono} size={14} color={iconColor} />
-                    </View>
-                    <Text style={[am.catNombre, { color: sel ? cat.tinte : t.ink }]} numberOfLines={2}>
+                    <Icon name={cat.icono} size={18} color={sel ? t.accent : cat.tinte} />
+                    <Text style={[am.catNombre, { color: sel ? t.accent : t.ink }]} numberOfLines={1}>
                       {cat.nombre}
                     </Text>
-                    {sel && (
-                      <View style={[am.checkDot, { backgroundColor: cat.tinte }]}>
-                        <Svg width={8} height={8} viewBox="0 0 24 24" fill="none"
-                          stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                          <Path d="M20 6L9 17l-5-5" />
-                        </Svg>
-                      </View>
-                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -247,12 +215,14 @@ function AgregarModal({ visible, onClose, onAgregar, existentes, t, dark }: {
         )}
 
         <TouchableOpacity
-          style={[am.btn, { backgroundColor: t.accent, opacity: puedeAgregar ? 1 : 0.35 }]}
+          style={[am.btn, { backgroundColor: t.accent, opacity: puedeAgregar ? 1 : 0.4 }]}
           onPress={handleAgregar}
           disabled={!puedeAgregar}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !puedeAgregar }}
         >
-          <Text style={[am.btnTxt, { color: t.bg }]}>
+          <Text style={[am.btnTxt, { color: t.onAccent }]}>
             {catSel
               ? `Agregar · ${CATEGORIAS.find(c => c.id === catSel)?.nombre ?? ''}`
               : 'Elegí una categoría'}
@@ -264,48 +234,46 @@ function AgregarModal({ visible, onClose, onAgregar, existentes, t, dark }: {
 }
 
 const am = StyleSheet.create({
-  sheet:   { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 10 },
-  pill:    { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
-  hdrRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  eyebrow: { fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 2 },
-  heading: { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 22, fontWeight: '400' },
-  label:   { fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', fontFamily: fonts.ui, fontWeight: '600', marginBottom: 8 },
-  inputRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, height: 50 },
+  sheet:   { borderTopLeftRadius: br.xl, borderTopRightRadius: br.xl, paddingHorizontal: 24, paddingTop: 12 },
+  pill:    { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  hdrRow:  { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
+  closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -12 },
+  eyebrow: { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 4 },
+  heading: { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 24, fontWeight: '400' },
+  label:   { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontFamily: fonts.ui, fontWeight: '600', marginBottom: 8 },
+  inputRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: br.md, borderWidth: 1, paddingHorizontal: 16, height: 52 },
   inputPfx:  { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 18 },
-  input:     { flex: 1, fontSize: 18, fontFamily: fonts.mono, paddingVertical: 0 },
-  error:     { fontSize: 11, fontFamily: fonts.ui, marginTop: 4 },
+  input:     { flex: 1, fontSize: 20, fontFamily: fonts.mono, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  error:     { fontSize: 13, fontFamily: fonts.ui, marginTop: 8 },
   catGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
-  catCard: {
-    width: '31%', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6,
-    borderRadius: 12, borderWidth: 1, gap: 6, position: 'relative',
+  catChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44,
+    paddingHorizontal: 12, borderRadius: br.full, borderWidth: 1,
   },
-  catIco:    { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  catNombre: { fontSize: 11, fontWeight: '500', fontFamily: fonts.ui, textAlign: 'center' },
-  checkDot:  { position: 'absolute', top: 6, right: 6, width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  emptyBox:  { padding: 20, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', marginBottom: 14 },
-  emptyTxt:  { fontSize: 12, fontFamily: fonts.ui, textAlign: 'center', lineHeight: 18 },
-  btn:       { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
-  btnTxt:    { fontSize: 14, fontWeight: '600', fontFamily: fonts.ui },
+  catNombre: { fontSize: 14, fontWeight: '500', fontFamily: fonts.ui },
+  emptyTxt:  { fontSize: 14, fontFamily: fonts.ui, lineHeight: 20 },
+  btn:       { minHeight: 52, borderRadius: br.lg, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  btnTxt:    { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
 });
 
 export default function PresupuestosScreen() {
   const { dark } = useThemeCtx();
   const t = dark ? colorsDark : colors;
-  const accent = t.accent;
-  const mes = new Date().toISOString().slice(0, 7);
+  const mes = localDateKey().slice(0, 7);
   const mesLabel = new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' });
 
   const [presupuestos, setPresupuestos] = useState<PresupuestoConGasto[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showAgregar, setShowAgregar] = useState(false);
 
   const cargar = useCallback(() => {
-    setCargando(true);
+    setError(null);
     try {
-      const p = getPresupuestosConGasto(mes);
-      setPresupuestos(p);
-    } catch {
-      Alert.alert('Error', 'No se pudieron cargar los presupuestos.');
+      setPresupuestos(getPresupuestosConGasto(mes));
+    } catch (e) {
+      console.error('Presupuestos error:', e);
+      setError('No pudimos cargar tus presupuestos.');
     } finally {
       setCargando(false);
     }
@@ -313,106 +281,107 @@ export default function PresupuestosScreen() {
 
   useFocusEffect(cargar);
 
-  const totalLim  = presupuestos.reduce((s, p) => s + p.montoLimite, 0);
-  const totalGast = presupuestos.reduce((s, p) => s + p.gastado, 0);
+  const totalLim  = presupuestos.reduce((acc, p) => acc + p.montoLimite, 0);
+  const totalGast = presupuestos.reduce((acc, p) => acc + p.gastado, 0);
   const totalPct  = totalLim > 0 ? Math.round((totalGast / totalLim) * 100) : 0;
 
   return (
     <SafeAreaView style={[s.flex, { backgroundColor: t.bg }]}>
       <View style={s.headerRow}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={hit}
+          style={s.backBtn}
+          accessibilityRole="button"
           accessibilityLabel="Volver">
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none"
-            stroke={accent} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none"
+            stroke={t.ink} strokeWidth={iconStroke} strokeLinecap="round" strokeLinejoin="round">
             <Path d="M19 12H5M12 19l-7-7 7-7" />
           </Svg>
         </TouchableOpacity>
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[s.eyebrow, { color: t.ink3 }]}>Presupuestos - {mesLabel}</Text>
-          <Text style={[s.heading, { color: t.ink }]}>{'Tu limite,\ntu ritmo.'}</Text>
+        <View style={{ flex: 1, marginLeft: 4 }}>
+          <Text style={[s.eyebrow, { color: t.muteText }]}>Presupuestos · {mesLabel}</Text>
+          <Text style={[s.heading, { color: t.ink }]} accessibilityRole="header">Tu límite, tu ritmo</Text>
         </View>
       </View>
 
       {cargando ? (
-        <ActivityIndicator color={accent} style={{ flex: 1 }} />
+        <View style={{ paddingHorizontal: 24, paddingTop: 16 }}><SkeletonRows count={4} /></View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-          {presupuestos.length > 0 && (
-            <FadeSlideIn delay={50}>
-              <View style={[s.resumen, { backgroundColor: t.card, borderColor: t.hairline }]}>
-                <DonutChart pct={totalPct} accent={accent} t={t} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.resumenEyebrow, { color: t.ink3 }]}>
-                    Gastado en {new Date().toLocaleDateString('es-PY', { month: 'long' })}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
-                    <Text style={[s.resumenGs, { color: t.ink }]}>Gs</Text>
-                    <Text style={[s.resumenMonto, { color: t.ink }]}>
-                      {(totalGast / 1000000).toFixed(2)}M
-                    </Text>
-                  </View>
-                  <Text style={[s.resumenSub, { color: t.ink3 }]}>
-                    de Gs {(totalLim / 1000000).toFixed(1)}M asignados
-                  </Text>
-                </View>
-              </View>
-            </FadeSlideIn>
+          {error && (
+            <View style={{ paddingHorizontal: 24, marginBottom: 16 }}>
+              <InlineError mensaje={error} onReintentar={cargar} />
+            </View>
           )}
 
-          <View style={s.tabs}>
-            <View style={[s.tab, { backgroundColor: dark ? t.surface : t.ink }]}>
-              <Text style={[s.tabTxt, { color: dark ? t.ink : t.bg }]}>Mis presupuestos</Text>
-              <View style={[s.tabBadge, { backgroundColor: dark ? 'rgba(241,237,230,0.1)' : 'rgba(250,248,244,0.18)' }]}>
-                <Text style={[s.tabBadgeTxt, { color: dark ? t.ink : t.bg }]}>{presupuestos.length}</Text>
+          {presupuestos.length > 0 && (
+            <View style={s.resumen}>
+              <DonutChart pct={totalPct} t={t} />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.resumenEyebrow, { color: t.muteText }]}>
+                  Gastado en {new Date().toLocaleDateString('es-PY', { month: 'long' })}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
+                  <Text style={[s.resumenGs, { color: t.ink }]}>Gs</Text>
+                  <Text style={[s.resumenMonto, { color: t.ink }]}>
+                    {(totalGast / 1000000).toFixed(2)}M
+                  </Text>
+                </View>
+                <Text style={[s.resumenSub, { color: t.ink2 }]}>
+                  de Gs {(totalLim / 1000000).toFixed(1)}M asignados
+                </Text>
               </View>
             </View>
-          </View>
+          )}
 
           {presupuestos.length === 0 ? (
-            <View style={[s.emptyBox, { borderColor: t.hairline }]}>
-              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none"
-                stroke={t.ink3} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                <Path d="M12 3v9h9a9 9 0 11-9-9z" />
-                <Path d="M14 3a7 7 0 017 7h-7V3z" />
-              </Svg>
-              <Text style={[s.emptyTxt, { color: t.ink3 }]}>
-                {'Sin presupuestos en ' + mesLabel + '.\nAgregá uno y tomá el control.'}
-              </Text>
-            </View>
+            <EmptyState
+              titulo={`Sin presupuestos en ${mesLabel}`}
+              texto="Poné un tope mensual por categoría, por ejemplo comida o transporte, y mirá cuánto te queda."
+              accion="Crear mi primer presupuesto"
+              onAccion={() => setShowAgregar(true)}
+            />
           ) : (
-            <View style={s.grid}>
+            <View style={s.lista}>
               {presupuestos.map((p, i) => (
-                <FadeSlideIn key={p.id} delay={100 + i * 80} style={s.gridItem}>
-                  <BudgetCard p={p} t={t} dark={dark} onDelete={() => {
+                <View key={p.id}>
+                  <BudgetRow p={p} t={t} onDelete={() => {
                     Alert.alert(
                       'Eliminar presupuesto',
                       `¿Eliminar el presupuesto de ${CATEGORIAS.find(c => c.id === p.categoriaId)?.nombre ?? p.categoriaId}?`,
                       [
                         { text: 'Cancelar', style: 'cancel' },
                         { text: 'Eliminar', style: 'destructive', onPress: () => {
-                          deletePresupuesto(p.categoriaId, mes);
-                          cargar();
+                          try {
+                            deletePresupuesto(p.categoriaId, mes);
+                            cargar();
+                          } catch {
+                            setError('No pudimos eliminar el presupuesto.');
+                          }
                         }},
                       ],
                     );
                   }} />
-                </FadeSlideIn>
+                  {i < presupuestos.length - 1 && <View style={[s.divider, { backgroundColor: t.hairline }]} />}
+                </View>
               ))}
             </View>
           )}
 
-          <FadeSlideIn delay={100 + presupuestos.length * 80}>
-          <TouchableOpacity
-            style={[s.addDash, { borderColor: dark ? 'rgba(241,237,230,0.18)' : 'rgba(0,0,0,0.13)' }]}
-            onPress={() => setShowAgregar(true)} activeOpacity={0.7}
-            accessibilityLabel="Nuevo presupuesto">
-            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none"
-              stroke={t.ink2} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <Path d="M12 5v14M5 12h14" />
-            </Svg>
-            <Text style={[s.addDashTxt, { color: t.ink2 }]}>Nuevo presupuesto</Text>
-          </TouchableOpacity>
-          </FadeSlideIn>
+          {presupuestos.length > 0 && (
+            <TouchableOpacity
+              style={[s.addBtn, { backgroundColor: t.accent }]}
+              onPress={() => setShowAgregar(true)} activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Nuevo presupuesto">
+              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+                stroke={t.onAccent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M12 5v14M5 12h14" />
+              </Svg>
+              <Text style={[s.addBtnTxt, { color: t.onAccent }]}>Nuevo presupuesto</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
@@ -424,12 +393,11 @@ export default function PresupuestosScreen() {
             setPresupuesto(catId, monto, mes);
             cargar();
           } catch {
-            Alert.alert('Error', 'No se pudo guardar el presupuesto. Intentá de nuevo.');
+            setError('No pudimos guardar el presupuesto. Intentá de nuevo.');
           }
         }}
         existentes={presupuestos.map(p => p.categoriaId)}
         t={t}
-        dark={dark}
       />
     </SafeAreaView>
   );
@@ -437,24 +405,18 @@ export default function PresupuestosScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 22, paddingTop: 14, paddingBottom: 14 },
-  eyebrow: { fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 2 },
-  heading: { fontFamily: fonts.display, fontStyle: 'italic', fontWeight: '400', fontSize: 34, lineHeight: 36, letterSpacing: -1 },
-  scroll: { paddingBottom: 40 },
-  resumen: { flexDirection: 'row', alignItems: 'center', gap: 18, marginHorizontal: 22, marginBottom: 16, padding: 18, borderRadius: 16, borderWidth: 1 },
-  resumenEyebrow: { fontSize: 11, letterSpacing: 0.4, textTransform: 'uppercase', fontFamily: fonts.ui },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, paddingTop: 4, paddingBottom: 16 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', fontFamily: fonts.ui, marginBottom: 4, marginTop: 6 },
+  heading: { fontFamily: fonts.display, fontStyle: 'italic', fontWeight: '400', fontSize: 30, lineHeight: 34, letterSpacing: -0.8 },
+  scroll: { paddingBottom: 48 },
+  resumen: { flexDirection: 'row', alignItems: 'center', gap: 20, paddingHorizontal: 24, marginBottom: 24 },
+  resumenEyebrow: { fontSize: 12, fontFamily: fonts.ui },
   resumenGs:    { fontFamily: fonts.display, fontStyle: 'italic', fontSize: 20 },
-  resumenMonto: { fontFamily: fonts.mono, fontSize: 28, fontWeight: '700', letterSpacing: -0.8 },
-  resumenSub:   { fontSize: 11, marginTop: 2, fontFamily: fonts.ui },
-  tabs: { flexDirection: 'row', gap: 6, paddingHorizontal: 22, marginBottom: 14 },
-  tab:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
-  tabTxt:      { fontSize: 12, fontWeight: '500', fontFamily: fonts.ui },
-  tabBadge:    { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999 },
-  tabBadgeTxt: { fontSize: 11, fontWeight: '600', fontFamily: fonts.ui },
-  grid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 22 },
-  gridItem: { width: '47.5%' },
-  emptyBox: { marginHorizontal: 22, padding: 28, borderRadius: br.lg, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center' },
-  emptyTxt: { fontSize: 13, lineHeight: 20, textAlign: 'center', fontFamily: fonts.ui },
-  addDash:  { marginHorizontal: 22, marginTop: 14, padding: 14, borderRadius: br.lg, borderWidth: 1, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  addDashTxt: { fontSize: 13, fontWeight: '500', fontFamily: fonts.ui },
+  resumenMonto: { fontFamily: fonts.mono, fontSize: 30, fontWeight: '700', letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  resumenSub:   { fontSize: 13, marginTop: 2, fontFamily: fonts.ui },
+  lista:    { paddingHorizontal: 24 },
+  divider:  { height: StyleSheet.hairlineWidth },
+  addBtn:   { marginHorizontal: 24, marginTop: 24, minHeight: 52, borderRadius: br.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  addBtnTxt: { fontSize: 16, fontWeight: '600', fontFamily: fonts.ui },
 });
