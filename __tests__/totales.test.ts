@@ -1,5 +1,12 @@
-import { calcularGastosPorBanco, calcularResumenMes, esComputable, FilaMovimiento } from '../services/totales';
-import { localMonthKey } from '../services/dateKeys';
+import {
+  calcularEgresosPorDia,
+  calcularGastosPorBanco,
+  calcularNetoDia,
+  calcularResumenMes,
+  esComputable,
+  FilaMovimiento,
+} from '../services/totales';
+import { localDateKey, localLastDaysKeys, localMonthKey } from '../services/dateKeys';
 
 function fila(parcial: Partial<FilaMovimiento> = {}): FilaMovimiento {
   return {
@@ -261,5 +268,131 @@ describe('totales: gasto por banco', () => {
       expect(Number.isInteger(g.total)).toBe(true);
       expect(g.total).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('totales: egresos por dia', () => {
+  const REF = new Date(2026, 9, 8, 23, 30);
+  const keys = localLastDaysKeys(REF, 7);
+  const desde = keys[0];
+  const hasta = keys[keys.length - 1];
+
+  it('T4: egresos por dia excluyen marcados y suman por dia ascendente', () => {
+    const filas = [
+      fila({ monto: -100000, fecha: '2026-10-08T10:00:00' }),
+      fila({ monto: -50000, fecha: '2026-10-08' }),
+      fila({ monto: -900000, fecha: '2026-10-08', esTraspaso: 1 }),
+      fila({ monto: -30000, fecha: '2026-10-05T08:00:00' }),
+      fila({ monto: 70000, fecha: '2026-10-06' }),
+    ];
+    expect(calcularEgresosPorDia(filas, desde, hasta)).toEqual([
+      { fecha: '2026-10-05', total: 30000 },
+      { fecha: '2026-10-08', total: 150000 },
+    ]);
+  });
+
+  it('T7: dia posterior a hoy y hace 7 dias no entran, hace 6 si', () => {
+    expect(desde).toBe('2026-10-02');
+    expect(hasta).toBe('2026-10-08');
+    const filas = [
+      fila({ monto: -1000, fecha: '2026-10-09' }),
+      fila({ monto: -2000, fecha: '2026-10-01T23:59:59' }),
+      fila({ monto: -4000, fecha: '2026-10-02' }),
+      fila({ monto: -8000, fecha: '2026-10-08T23:59:59' }),
+    ];
+    expect(calcularEgresosPorDia(filas, desde, hasta)).toEqual([
+      { fecha: '2026-10-02', total: 4000 },
+      { fecha: '2026-10-08', total: 8000 },
+    ]);
+  });
+
+  it('T13: patas de traspaso evaluadas por separado en meses distintos y borde de ventana', () => {
+    const ref = new Date(2026, 10, 3, 0, 15);
+    const k = localLastDaysKeys(ref, 7);
+    expect(k[0]).toBe('2026-10-28');
+    const filas = [
+      fila({ monto: -500000, fecha: '2026-10-28', esTraspaso: 1 }),
+      fila({ monto: -20000, fecha: '2026-10-28' }),
+      fila({ monto: -40000, fecha: '2026-10-27' }),
+      fila({ monto: -60000, fecha: '2026-11-03', esTraspaso: 1 }),
+      fila({ monto: -80000, fecha: '2026-11-03' }),
+      fila({ monto: -5000, fecha: '2026-11-04' }),
+    ];
+    expect(calcularEgresosPorDia(filas, k[0], k[k.length - 1])).toEqual([
+      { fecha: '2026-10-28', total: 20000 },
+      { fecha: '2026-11-03', total: 80000 },
+    ]);
+  });
+
+  it('T12: vacio y solo traspasos dan lista vacia', () => {
+    expect(calcularEgresosPorDia([], desde, hasta)).toEqual([]);
+    const filas = [
+      fila({ monto: -500000, fecha: '2026-10-08', esTraspaso: 1 }),
+      fila({ monto: 500000, fecha: '2026-10-08', esTraspaso: 1 }),
+    ];
+    expect(calcularEgresosPorDia(filas, desde, hasta)).toEqual([]);
+  });
+
+  it('T16: no muta las filas de entrada', () => {
+    const filas = [
+      fila({ monto: -100, fecha: '2026-10-08' }),
+      fila({ monto: -300, fecha: '2026-10-07', esTraspaso: 1 }),
+      fila({ monto: -50, fecha: '2026-09-01' }),
+    ];
+    const copia = JSON.parse(JSON.stringify(filas));
+    calcularEgresosPorDia(filas, desde, hasta);
+    expect(filas).toEqual(copia);
+  });
+
+  it('T17: totales enteros y positivos', () => {
+    const filas = [
+      fila({ monto: -123000, fecha: '2026-10-08' }),
+      fila({ monto: -7000, fecha: '2026-10-08' }),
+      fila({ monto: -5000, fecha: '2026-10-07' }),
+    ];
+    const r = calcularEgresosPorDia(filas, desde, hasta);
+    expect(r[1].total).toBe(130000);
+    for (const e of r) {
+      expect(Number.isInteger(e.total)).toBe(true);
+      expect(e.total).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('totales: neto del dia', () => {
+  const REF = new Date(2026, 9, 8, 0, 15);
+  const dia = localDateKey(REF);
+
+  it('T10: suma con signo, excluye marcados y otros dias', () => {
+    const filas = [
+      fila({ monto: 500000, fecha: '2026-10-08T09:00:00' }),
+      fila({ monto: -120000, fecha: '2026-10-08' }),
+      fila({ monto: -900000, fecha: '2026-10-08', esTraspaso: 1 }),
+      fila({ monto: 900000, fecha: '2026-10-08', esTraspaso: 1 }),
+      fila({ monto: -7000, fecha: '2026-10-07T23:59:59' }),
+      fila({ monto: 3000, fecha: '2026-10-09' }),
+    ];
+    expect(calcularNetoDia(filas, dia)).toBe(380000);
+  });
+
+  it('T10: neto negativo conserva el signo', () => {
+    expect(calcularNetoDia([fila({ monto: -4000, fecha: '2026-10-08' })], dia)).toBe(-4000);
+  });
+
+  it('T12: vacio y solo traspasos dan 0', () => {
+    expect(calcularNetoDia([], dia)).toBe(0);
+    expect(calcularNetoDia([fila({ monto: -5000, fecha: '2026-10-08', esTraspaso: 1 })], dia)).toBe(0);
+  });
+
+  it('T16: no muta las filas de entrada', () => {
+    const filas = [fila({ monto: -100, fecha: '2026-10-08' }), fila({ monto: 5, esTraspaso: 1 })];
+    const copia = JSON.parse(JSON.stringify(filas));
+    calcularNetoDia(filas, dia);
+    expect(filas).toEqual(copia);
+  });
+
+  it('T17: resultado entero', () => {
+    const filas = [fila({ monto: 123000, fecha: '2026-10-08' }), fila({ monto: -7000, fecha: '2026-10-08' })];
+    expect(Number.isInteger(calcularNetoDia(filas, dia))).toBe(true);
   });
 });

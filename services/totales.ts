@@ -69,3 +69,29 @@ export function calcularGastosPorBanco(filas: FilaMovimiento[], mes: string): Ga
     (a, b) => b.total - a.total || (a.bancoId < b.bancoId ? -1 : a.bancoId > b.bancoId ? 1 : 0)
   );
 }
+
+export function calcularEgresosPorDia(
+  filas: FilaMovimiento[],
+  desde: string,
+  hasta: string
+): EgresoDia[] {
+  const porDia = new Map<string, number>();
+  for (const f of filas) {
+    if (!esComputable(f) || f.monto >= 0) continue;
+    const dia = storedDayKey(f.fecha);
+    if (dia < desde || dia > hasta) continue;
+    porDia.set(dia, (porDia.get(dia) ?? 0) + -f.monto);
+  }
+  return Array.from(porDia, ([fecha, total]) => ({ fecha, total })).sort((a, b) =>
+    a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0
+  );
+}
+
+export function calcularNetoDia(filas: FilaMovimiento[], dia: string): number {
+  let neto = 0;
+  for (const f of filas) {
+    if (!esComputable(f) || storedDayKey(f.fecha) !== dia) continue;
+    neto += f.monto;
+  }
+  return neto;
+}
