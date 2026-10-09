@@ -2,13 +2,18 @@
  * database
  * Responsabilidad: Capa de acceso a SQLite (sync API) con Expo SQLite
  * Usado por: toda la app (~29 imports)
- * Depende de: encryption, categories
+ * Depende de: encryption, categories, dateKeys, totales
  * Migraciones: cuentas duplicadas, orden col, adjunto, traspasos, categorias_ocultas, chat_cache session_id
  */
 import * as SQLite from 'expo-sqlite';
 import { CATEGORIAS } from '@/constants/categories';
 import nacl from 'tweetnacl';
 import { encrypt, decrypt } from '@/services/encryption';
+import { localDateKey, localMonthKey, localLastDaysKeys } from '@/services/dateKeys';
+import {
+  calcularResumenMes, calcularGastosPorBanco, calcularEgresosPorDia, calcularNetoDia,
+} from '@/services/totales';
+import type { FilaMovimiento, ResumenMes, GastoBanco, EgresoDia } from '@/services/totales';
 import type {
   CuentaBancaria, Transaccion, Categoria,
   ReglaClasificacion, EstadoOnboarding,
@@ -341,46 +346,56 @@ export function getSaldoTotal(): number {
   return row?.total ?? 0;
 }
 
-export function getEgresosPorDia(dias: number = 7): { fecha: string; total: number }[] {
-  const db = getDB();
-  const desde = new Date();
-  desde.setDate(desde.getDate() - dias + 1);
-  const desdeStr = desde.toISOString().slice(0, 10);
-  return db.getAllSync<{ fecha: string; total: number }>(
-    `SELECT substr(fecha, 1, 10) AS fecha, SUM(ABS(monto)) AS total
-     FROM transacciones WHERE monto < 0 AND substr(fecha, 1, 10) >= ?
-     GROUP BY substr(fecha, 1, 10) ORDER BY fecha ASC`,
-    [desdeStr]
+export function getEgresosPorDia(dias: number = 7, ref: Date = new Date()): EgresoDia[] {
+  const keys = localLastDaysKeys(ref, dias);
+  if (keys.length === 0) return [];
+  const desde = keys[0];
+  const hasta = keys[keys.length - 1];
+  const filas = getDB().getAllSync<FilaMovimiento>(
+    `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
+            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+     FROM transacciones
+     WHERE monto < 0 AND substr(fecha, 1, 10) BETWEEN ? AND ?`,
+    [desde, hasta]
   );
+  return calcularEgresosPorDia(filas, desde, hasta);
 }
 
-export function getResumenMesActual(): Promise<{ ingresos: number; egresos: number; topCategorias: { id: string; nombre: string; total: number }[] }> {
-  const db = getDB();
-  const now2 = new Date();
-  const mes = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, '0')}`;
-  const ing = db.getFirstSync<{ t: number }>("SELECT SUM(monto) AS t FROM transacciones WHERE monto > 0 AND substr(fecha,1,7) = ?", [mes]);
-  const egr = db.getFirstSync<{ t: number }>("SELECT SUM(ABS(monto)) AS t FROM transacciones WHERE monto < 0 AND substr(fecha,1,7) = ?", [mes]);
-  const top = db.getAllSync<{ id: string; nombre: string; total: number }>(
-    `SELECT c.id, c.nombre, SUM(ABS(t.monto)) AS total FROM transacciones t
-     JOIN categorias c ON c.id = t.categoria_id
-     WHERE t.monto < 0 AND substr(t.fecha,1,7) = ?
-     GROUP BY c.id ORDER BY total DESC LIMIT 6`,
+export function getResumenMesActual(ref: Date = new Date()): Promise<ResumenMes> {
+  const mes = localMonthKey(ref);
+  const filas = getDB().getAllSync<FilaMovimiento>(
+    `SELECT t.monto AS monto, t.fecha AS fecha, t.es_traspaso AS esTraspaso,
+            t.banco_id AS bancoId, t.categoria_id AS categoriaId, c.nombre AS categoriaNombre
+     FROM transacciones t
+     LEFT JOIN categorias c ON c.id = t.categoria_id
+     WHERE substr(t.fecha, 1, 7) = ?`,
     [mes]
   );
-  return Promise.resolve({ ingresos: ing?.t ?? 0, egresos: egr?.t ?? 0, topCategorias: top });
+  return Promise.resolve(calcularResumenMes(filas, mes, 6));
 }
 
-export function getGastosPorBanco(mes?: string): { bancoId: string; total: number }[] {
-  if (!mes) {
-    const n = new Date();
-    mes = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
-  }
-  return getDB().getAllSync<{ bancoId: string; total: number }>(
-    `SELECT banco_id AS bancoId, SUM(ABS(monto)) AS total
-     FROM transacciones WHERE monto < 0 AND substr(fecha,1,7) = ?
-     GROUP BY banco_id ORDER BY total DESC`,
-    [mes]
+export function getGastosPorBanco(mes?: string, ref: Date = new Date()): GastoBanco[] {
+  const m = mes ?? localMonthKey(ref);
+  const filas = getDB().getAllSync<FilaMovimiento>(
+    `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
+            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+     FROM transacciones
+     WHERE monto < 0 AND substr(fecha, 1, 7) = ?`,
+    [m]
   );
+  return calcularGastosPorBanco(filas, m);
+}
+
+export function getNetoHoy(ref: Date = new Date()): number {
+  const dia = localDateKey(ref);
+  const filas = getDB().getAllSync<FilaMovimiento>(
+    `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
+            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+     FROM transacciones
+     WHERE substr(fecha, 1, 10) = ?`,
+    [dia]
+  );
+  return calcularNetoDia(filas, dia);
 }
 
 export function getConfig(clave: string): string | null {
@@ -653,8 +668,8 @@ export function notificarTransaccion(titulo: string, cuerpo: string): void {
 export async function getTransaccionesAsync(opciones?: Parameters<typeof getTransacciones>[0]): Promise<Transaccion[]> {
   return getTransacciones(opciones);
 }
-export async function getResumenMesActualAsync(): Promise<{ ingresos: number; egresos: number; topCategorias: { id: string; nombre: string; total: number }[] }> {
-  return getResumenMesActual();
+export async function getResumenMesActualAsync(ref?: Date): Promise<ResumenMes> {
+  return getResumenMesActual(ref);
 }
 export async function setOnboardingCompletadoAsync(datos: Partial<EstadoOnboarding>): Promise<void> {
   return Promise.resolve(setOnboardingCompletado(datos));
@@ -674,8 +689,8 @@ export async function updateCategoriaAsync(txId: string, categoriaId: string): P
 export async function deleteCuentaAsync(cuentaId: string): Promise<void> {
   return Promise.resolve(deleteCuenta(cuentaId));
 }
-export async function getGastosPorBancoAsync(mes?: string): Promise<{ bancoId: string; total: number }[]> {
-  return Promise.resolve(getGastosPorBanco(mes));
+export async function getGastosPorBancoAsync(mes?: string, ref?: Date): Promise<GastoBanco[]> {
+  return Promise.resolve(getGastosPorBanco(mes, ref));
 }
 export async function getCategoriasOcultasAsync(): Promise<string[]> {
   return Promise.resolve(getCategoriasOcultas());
