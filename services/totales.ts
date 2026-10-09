@@ -57,3 +57,15 @@ export function calcularResumenMes(
     .slice(0, Math.max(0, limiteTop));
   return { ingresos, egresos, topCategorias };
 }
+
+export function calcularGastosPorBanco(filas: FilaMovimiento[], mes: string): GastoBanco[] {
+  const porBanco = new Map<string, number>();
+  for (const f of filas) {
+    if (!esComputable(f) || f.monto >= 0 || !f.bancoId) continue;
+    if (storedDayKey(f.fecha).slice(0, 7) !== mes) continue;
+    porBanco.set(f.bancoId, (porBanco.get(f.bancoId) ?? 0) + -f.monto);
+  }
+  return Array.from(porBanco, ([bancoId, total]) => ({ bancoId, total })).sort(
+    (a, b) => b.total - a.total || (a.bancoId < b.bancoId ? -1 : a.bancoId > b.bancoId ? 1 : 0)
+  );
+}

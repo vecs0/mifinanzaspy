@@ -1,4 +1,4 @@
-import { calcularResumenMes, esComputable, FilaMovimiento } from '../services/totales';
+import { calcularGastosPorBanco, calcularResumenMes, esComputable, FilaMovimiento } from '../services/totales';
 import { localMonthKey } from '../services/dateKeys';
 
 function fila(parcial: Partial<FilaMovimiento> = {}): FilaMovimiento {
@@ -188,6 +188,78 @@ describe('totales: transversales del resumen', () => {
     for (const c of r.topCategorias) {
       expect(Number.isInteger(c.total)).toBe(true);
       expect(c.total).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('totales: gasto por banco', () => {
+  it('T3: mes actual excluye marcados y banco con solo traspasos no aparece', () => {
+    const filas = [
+      fila({ monto: -100000, bancoId: 'itau' }),
+      fila({ monto: -900000, bancoId: 'itau', esTraspaso: 1 }),
+      fila({ monto: -700000, bancoId: 'wise', esTraspaso: 1 }),
+      fila({ monto: 50000, bancoId: 'itau' }),
+    ];
+    expect(calcularGastosPorBanco(filas, MES)).toEqual([{ bancoId: 'itau', total: 100000 }]);
+  });
+
+  it('T3: otro mes pedido excluye marcados y otros meses', () => {
+    const filas = [
+      fila({ monto: -30000, bancoId: 'itau', fecha: '2026-09-15' }),
+      fila({ monto: -80000, bancoId: 'itau', fecha: '2026-09-30T23:59:59' }),
+      fila({ monto: -500000, bancoId: 'itau', fecha: '2026-09-10', esTraspaso: 1 }),
+      fila({ monto: -10000, bancoId: 'itau', fecha: '2026-10-01' }),
+    ];
+    expect(calcularGastosPorBanco(filas, '2026-09')).toEqual([{ bancoId: 'itau', total: 110000 }]);
+  });
+
+  it('T3: bancoId nulo descartado', () => {
+    const filas = [fila({ monto: -1000, bancoId: null }), fila({ monto: -2000, bancoId: 'a' })];
+    expect(calcularGastosPorBanco(filas, MES)).toEqual([{ bancoId: 'a', total: 2000 }]);
+  });
+
+  it('T3: orden total DESC y desempate bancoId ASC', () => {
+    const filas = [
+      fila({ monto: -50000, bancoId: 'z' }),
+      fila({ monto: -50000, bancoId: 'b' }),
+      fila({ monto: -80000, bancoId: 'm' }),
+      fila({ monto: -20000, bancoId: 'a' }),
+      fila({ monto: -30000, bancoId: 'a' }),
+    ];
+    expect(calcularGastosPorBanco(filas, MES).map((g) => g.bancoId)).toEqual(['m', 'a', 'b', 'z']);
+  });
+
+  it('T12: mes vacio y solo traspasos dan lista vacia', () => {
+    expect(calcularGastosPorBanco([], MES)).toEqual([]);
+    const filas = [
+      fila({ monto: -500000, bancoId: 'a', esTraspaso: 1 }),
+      fila({ monto: 500000, bancoId: 'b', esTraspaso: 1 }),
+    ];
+    expect(calcularGastosPorBanco(filas, MES)).toEqual([]);
+  });
+
+  it('T16: no muta las filas de entrada', () => {
+    const filas = [
+      fila({ monto: -100, bancoId: 'b' }),
+      fila({ monto: -300, bancoId: 'a', esTraspaso: 1 }),
+      fila({ monto: -50, bancoId: 'a', fecha: '2026-11-02' }),
+    ];
+    const copia = JSON.parse(JSON.stringify(filas));
+    calcularGastosPorBanco(filas, MES);
+    expect(filas).toEqual(copia);
+  });
+
+  it('T17: totales enteros y positivos', () => {
+    const filas = [
+      fila({ monto: -123000, bancoId: 'a' }),
+      fila({ monto: -7000, bancoId: 'a' }),
+      fila({ monto: -5000, bancoId: 'b' }),
+    ];
+    const r = calcularGastosPorBanco(filas, MES);
+    expect(r[0].total).toBe(130000);
+    for (const g of r) {
+      expect(Number.isInteger(g.total)).toBe(true);
+      expect(g.total).toBeGreaterThan(0);
     }
   });
 });
