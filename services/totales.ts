@@ -34,14 +34,26 @@ export function esComputable(fila: Pick<FilaMovimiento, 'esTraspaso'>): boolean 
 export function calcularResumenMes(
   filas: FilaMovimiento[],
   mes: string,
-  _limiteTop: number
+  limiteTop: number
 ): ResumenMes {
   let ingresos = 0;
   let egresos = 0;
+  const porCat = new Map<string, { id: string; nombre: string; total: number }>();
   for (const f of filas) {
     if (!esComputable(f) || storedDayKey(f.fecha).slice(0, 7) !== mes) continue;
-    if (f.monto > 0) ingresos += f.monto;
-    else if (f.monto < 0) egresos += -f.monto;
+    if (f.monto > 0) {
+      ingresos += f.monto;
+    } else if (f.monto < 0) {
+      egresos += -f.monto;
+      if (f.categoriaId && f.categoriaNombre) {
+        const actual = porCat.get(f.categoriaId);
+        if (actual) actual.total += -f.monto;
+        else porCat.set(f.categoriaId, { id: f.categoriaId, nombre: f.categoriaNombre, total: -f.monto });
+      }
+    }
   }
-  return { ingresos, egresos, topCategorias: [] };
+  const topCategorias = Array.from(porCat.values())
+    .sort((a, b) => b.total - a.total || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, Math.max(0, limiteTop));
+  return { ingresos, egresos, topCategorias };
 }

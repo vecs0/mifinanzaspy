@@ -93,3 +93,101 @@ describe('totales: resumen del mes', () => {
     expect(r.egresos).toBe(50000);
   });
 });
+
+describe('totales: top de categorias del resumen', () => {
+  const cat = (id: string, monto: number, extra: Partial<FilaMovimiento> = {}) =>
+    fila({ monto, categoriaId: id, categoriaNombre: id.toUpperCase(), ...extra });
+
+  it('T5: categoria solo con traspasos no aparece y el top se completa con las restantes', () => {
+    const filas = [
+      cat('a', -900000, { esTraspaso: 1 }),
+      cat('b', -300000),
+      cat('c', -200000),
+      cat('d', -100000),
+    ];
+    const r = calcularResumenMes(filas, MES, 2);
+    expect(r.topCategorias.map((c) => c.id)).toEqual(['b', 'c']);
+    const todas = calcularResumenMes(filas, MES, 6);
+    expect(todas.topCategorias.map((c) => c.id)).toEqual(['b', 'c', 'd']);
+  });
+
+  it('T5: traspasos de una categoria con gasto real no suman a su total', () => {
+    const filas = [cat('a', -100000), cat('a', -700000, { esTraspaso: 1 })];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(r.topCategorias).toEqual([{ id: 'a', nombre: 'A', total: 100000 }]);
+  });
+
+  it('T5: orden total DESC y desempate id ASC', () => {
+    const filas = [
+      cat('z', -50000),
+      cat('b', -50000),
+      cat('m', -80000),
+      cat('a', -20000),
+      cat('a', -30000),
+    ];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(r.topCategorias.map((c) => c.id)).toEqual(['m', 'a', 'b', 'z']);
+    expect(r.topCategorias[1].total).toBe(50000);
+  });
+
+  it('T5: solo egresos del mes cuentan en el top', () => {
+    const filas = [
+      cat('a', 400000),
+      cat('b', -10000, { fecha: '2026-09-30' }),
+      cat('c', -20000, { fecha: '2026-11-01' }),
+      cat('d', -30000),
+      fila({ monto: -5000 }),
+    ];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(r.topCategorias).toEqual([{ id: 'd', nombre: 'D', total: 30000 }]);
+  });
+
+  it('T5: limiteTop 0 devuelve top vacio', () => {
+    const r = calcularResumenMes([cat('a', -1000)], MES, 0);
+    expect(r.topCategorias).toEqual([]);
+  });
+});
+
+describe('totales: transversales del resumen', () => {
+  it('T12: mes vacio da ceros y top vacio sin excepciones', () => {
+    const r = calcularResumenMes([], MES, 6);
+    expect(r).toEqual({ ingresos: 0, egresos: 0, topCategorias: [] });
+  });
+
+  it('T12: mes con solo traspasos da ceros y top vacio', () => {
+    const filas = [
+      fila({ monto: -500000, esTraspaso: 1, categoriaId: 'a', categoriaNombre: 'A' }),
+      fila({ monto: 500000, esTraspaso: 1 }),
+    ];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(r).toEqual({ ingresos: 0, egresos: 0, topCategorias: [] });
+  });
+
+  it('T16: no muta las filas de entrada', () => {
+    const filas = [
+      fila({ monto: -100, categoriaId: 'a', categoriaNombre: 'A' }),
+      fila({ monto: 300, esTraspaso: 1 }),
+      fila({ monto: 50, fecha: '2026-11-02' }),
+    ];
+    const copia = JSON.parse(JSON.stringify(filas));
+    calcularResumenMes(filas, MES, 6);
+    expect(filas).toEqual(copia);
+  });
+
+  it('T17: totales enteros y egresos positivos', () => {
+    const filas = [
+      fila({ monto: -123000, categoriaId: 'a', categoriaNombre: 'A' }),
+      fila({ monto: -7000, categoriaId: 'b', categoriaNombre: 'B' }),
+      fila({ monto: 900000 }),
+    ];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(Number.isInteger(r.ingresos)).toBe(true);
+    expect(Number.isInteger(r.egresos)).toBe(true);
+    expect(r.egresos).toBe(130000);
+    expect(r.egresos).toBeGreaterThan(0);
+    for (const c of r.topCategorias) {
+      expect(Number.isInteger(c.total)).toBe(true);
+      expect(c.total).toBeGreaterThan(0);
+    }
+  });
+});
