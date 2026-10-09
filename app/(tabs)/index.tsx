@@ -25,7 +25,7 @@ import {
 } from '@/services/database';
 import { calcularProyeccion } from '@/services/classifier';
 import { getRecordatorioProximo, type Recordatorio } from '@/services/reminders';
-import { localDateKey } from '@/services/dateKeys';
+import { construirSerie7Dias } from '@/services/totales';
 import { BankCard }        from '@/components/BankCard';
 import { TransactionRow }  from '@/components/TransactionRow';
 import { HealthBar }       from '@/components/HealthBar';
@@ -59,7 +59,7 @@ function BarChart7d({ datos, alto = 64 }: { datos: { dia: string; total: number;
   return (
     <View
       accessible
-      accessibilityLabel={`Gastos de la semana: ${datos.map(d => `${d.dia} ${fmtNum(d.total)} guaraníes`).join(', ')}`}
+      accessibilityLabel={`Gastos de los últimos 7 días: ${datos.map(d => `${d.dia} ${fmtNum(d.total)} guaraníes`).join(', ')}`}
       style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: alto + 22 }}
     >
       {datos.map((d, i) => {
@@ -332,16 +332,7 @@ export default function DashboardScreen() {
 
       setIngresos(resumen.ingresos);
       setEgresos(resumen.egresos);
-      const hoyKey = localDateKey(hoy);
-      const domingo = new Date(hoy);
-      domingo.setDate(hoy.getDate() - hoy.getDay());
-      const data: BarraDia[] = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(domingo); d.setDate(domingo.getDate() + i);
-        const key = localDateKey(d);
-        data.push({ dia: DIAS[d.getDay()], total: eg7.find(e => e.fecha === key)?.total ?? 0, esHoy: key === hoyKey });
-      }
-      setBarras(data);
+      setBarras(construirSerie7Dias(eg7, hoy, DIAS));
       setGastosPorBanco(gastosBanco);
       setProyeccion(calcularProyeccion(resumen.ingresos, resumen.egresos, total));
       const planStr = await getConfig('plan_activo');
