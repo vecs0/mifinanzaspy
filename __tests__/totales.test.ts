@@ -4,6 +4,7 @@ import {
   calcularNetoDia,
   calcularResumenMes,
   esComputable,
+  construirSerie7Dias,
   FilaMovimiento,
 } from '../services/totales';
 import { localDateKey, localLastDaysKeys, localMonthKey } from '../services/dateKeys';
@@ -394,5 +395,54 @@ describe('totales: neto del dia', () => {
   it('T17: resultado entero', () => {
     const filas = [fila({ monto: 123000, fecha: '2026-10-08' }), fila({ monto: -7000, fecha: '2026-10-08' })];
     expect(Number.isInteger(calcularNetoDia(filas, dia))).toBe(true);
+  });
+});
+
+describe('totales: serie de 7 dias', () => {
+  const ETQ = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+
+  it('T11: 7 barras ascendentes, ceros, solo la ultima esHoy y etiquetas por dia local', () => {
+    const ref = new Date(2026, 9, 8, 23, 30);
+    const egresos = [
+      { fecha: '2026-10-08', total: 300 },
+      { fecha: '2026-10-05', total: 150 },
+    ];
+    const s = construirSerie7Dias(egresos, ref, ETQ);
+    expect(s.map((b) => b.key)).toEqual([
+      '2026-10-02',
+      '2026-10-03',
+      '2026-10-04',
+      '2026-10-05',
+      '2026-10-06',
+      '2026-10-07',
+      '2026-10-08',
+    ]);
+    expect(s.map((b) => b.total)).toEqual([0, 0, 0, 150, 0, 0, 300]);
+    expect(s.map((b) => b.esHoy)).toEqual([false, false, false, false, false, false, true]);
+    expect(s.map((b) => b.dia)).toEqual(['Vie', 'Sab', 'Dom', 'Lun', 'Mar', 'Mie', 'Jue']);
+  });
+
+  it('T11: cruza de mes y de anio', () => {
+    const ref = new Date(2026, 0, 2, 0, 5);
+    const s = construirSerie7Dias([{ fecha: '2025-12-31', total: 90 }], ref, ETQ);
+    expect(s.map((b) => b.key)).toEqual([
+      '2025-12-27',
+      '2025-12-28',
+      '2025-12-29',
+      '2025-12-30',
+      '2025-12-31',
+      '2026-01-01',
+      '2026-01-02',
+    ]);
+    expect(s.map((b) => b.total)).toEqual([0, 0, 0, 0, 90, 0, 0]);
+    expect(s.filter((b) => b.esHoy).length).toBe(1);
+    expect(s[6].esHoy).toBe(true);
+    expect(s.map((b) => b.dia)).toEqual(['Sab', 'Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie']);
+  });
+
+  it('T11: sin egresos devuelve 7 barras en cero', () => {
+    const s = construirSerie7Dias([], new Date(2026, 9, 8), ETQ);
+    expect(s).toHaveLength(7);
+    expect(s.every((b) => b.total === 0)).toBe(true);
   });
 });

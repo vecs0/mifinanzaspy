@@ -4,7 +4,7 @@
  * Usado por: __tests__/totales.test.ts
  * Depende de: services/dateKeys.ts
  */
-import { storedDayKey } from './dateKeys';
+import { localDateKey, localLastDaysKeys, storedDayKey } from './dateKeys';
 
 export type FilaMovimiento = {
   monto: number;
@@ -94,4 +94,23 @@ export function calcularNetoDia(filas: FilaMovimiento[], dia: string): number {
     neto += f.monto;
   }
   return neto;
+}
+
+export function construirSerie7Dias(
+  egresos: EgresoDia[],
+  ref: Date,
+  etiquetas: readonly string[]
+): BarraDia[] {
+  const porDia = new Map<string, number>();
+  for (const e of egresos) porDia.set(e.fecha, (porDia.get(e.fecha) ?? 0) + e.total);
+  const hoyKey = localDateKey(ref);
+  return localLastDaysKeys(ref, 7).map((key) => {
+    const [a, m, d] = key.split('-').map(Number);
+    return {
+      key,
+      dia: etiquetas[new Date(a, m - 1, d).getDay()],
+      total: porDia.get(key) ?? 0,
+      esHoy: key === hoyKey,
+    };
+  });
 }
