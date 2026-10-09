@@ -21,11 +21,11 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import {
   getCuentas, getTransacciones, getSaldoTotal,
   getResumenMesActual, getEgresosPorDia, getConfig,
-  getGastosPorBanco, getCantidadNoLeidas,
+  getGastosPorBanco, getCantidadNoLeidas, getNetoHoy,
 } from '@/services/database';
 import { calcularProyeccion } from '@/services/classifier';
 import { getRecordatorioProximo, type Recordatorio } from '@/services/reminders';
-import { localDateKey, localDayRange } from '@/services/dateKeys';
+import { localDateKey } from '@/services/dateKeys';
 import { BankCard }        from '@/components/BankCard';
 import { TransactionRow }  from '@/components/TransactionRow';
 import { HealthBar }       from '@/components/HealthBar';
@@ -310,16 +310,14 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const hoy = new Date();
-      const rangoHoy = localDayRange(hoy);
-      const [ctas, total, txs, txsHoy, resumen, eg7, nombre, gastosBanco] = await Promise.all([
+      const [ctas, total, txs, resumen, eg7, nombre, gastosBanco] = await Promise.all([
         getCuentas(),
         getSaldoTotal(),
         getTransacciones({ limite: 5 }),
-        getTransacciones({ desde: rangoHoy.desde, hasta: rangoHoy.hasta, limite: 500 }),
-        getResumenMesActual(),
-        getEgresosPorDia(7),
+        getResumenMesActual(hoy),
+        getEgresosPorDia(7, hoy),
         getConfig('perfil_nombre'),
-        getGastosPorBanco(),
+        getGastosPorBanco(undefined, hoy),
       ]);
       setNombrePerfil(nombre ?? '');
       setCuentas(ctas);
@@ -330,7 +328,7 @@ export default function DashboardScreen() {
       setSaldoUSD(usdCuentas.reduce((acc, c) => acc + c.saldoActual, 0));
 
       setTx(txs);
-      setHoyNeto(txsHoy.reduce((acc, x) => acc + x.monto, 0));
+      setHoyNeto(getNetoHoy(hoy));
 
       setIngresos(resumen.ingresos);
       setEgresos(resumen.egresos);
