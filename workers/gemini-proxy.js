@@ -2,7 +2,12 @@
  * Gemini Proxy Worker - Cloudflare Workers
  * Secrets: GEMINI_API_KEY (obligatorio), APP_TOKEN (opcional)
  * Vars: GEMINI_MODEL, ALLOWED_ORIGIN (vacio = sin CORS), RATE_LIMIT_PER_MIN
- * Binding opcional: RATE_LIMITER (Cloudflare Rate Limiting, contador compartido)
+ * Binding: RATE_LIMITER (Cloudflare Rate Limiting, contador compartido).
+ *   Requerido para un rate limiting efectivo: sin este binding (ver
+ *   workers/wrangler.toml, [[unsafe.bindings]]) el limite es decorativo.
+ *   El fallback en memoria (Map hits) es best-effort por isolate: cada isolate
+ *   de Cloudflare Workers es efimero y no comparte memoria con los demas, por
+ *   lo que no impone un limite global real. Solo acota abuso casual por isolate.
  * Request: POST { body } con header x-app-token si APP_TOKEN esta definido
  */
 
@@ -28,8 +33,12 @@ function json(env, status, obj) {
 
 async function limited(env, ip) {
   if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === 'function') {
-    const { success } = await env.RATE_LIMITER.limit({ key: ip });
-    return !success;
+    try {
+      const { success } = await env.RATE_LIMITER.limit({ key: ip });
+      return !success;
+    } catch (e) {
+      console.warn('[rate] RATE_LIMITER falló, uso fallback en memoria:', e);
+    }
   }
   const max = parseInt(env.RATE_LIMIT_PER_MIN || '30', 10);
   const now = Date.now();

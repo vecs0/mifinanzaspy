@@ -24,8 +24,11 @@ import { SkeletonRows } from '@/components/Skeleton';
 import { CATEGORIAS } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { categoriasFiltrables, categoriaVisible } from '@/services/categorias';
 import { colors, colorsDark } from '@/theme/design-system';
 import type { Transaccion, CuentaBancaria } from '@/types/finance';
+
+const CHIP_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 };
 
 const PERIODOS = [
   { id: 'mes',    label: 'Este mes' },
@@ -119,10 +122,9 @@ export default function HistorialScreen() {
   const searchAnim = useRef(new Animated.Value(0)).current;
   const searchRef = useRef<TextInput>(null);
 
-  const catsVisibles = useMemo(() => {
-    const ocultas = getCategoriasOcultas();
-    return CATEGORIAS.filter(c => c.tipo !== 'mixto' && !ocultas.includes(c.id));
-  }, []);
+  const [catsVisibles, setCatsVisibles] = useState(() =>
+    categoriasFiltrables(CATEGORIAS, getCategoriasOcultas()),
+  );
 
   const bancos = useMemo(() => {
     const ids = [...new Set(cuentas.map(c => c.bancoId).filter(Boolean))];
@@ -154,9 +156,13 @@ export default function HistorialScreen() {
   }, [periodo, filtroCat, filtroBanco]);
 
   useFocusEffect(useCallback(() => {
+    const visibles = categoriasFiltrables(CATEGORIAS, getCategoriasOcultas());
+    setCatsVisibles(visibles);
+    const filtroOculto = filtroCat !== null && !categoriaVisible(filtroCat, visibles);
+    if (filtroOculto) setFiltroCat(null);
     setCuentas(getCuentas());
-    cargar();
-  }, [cargar]));
+    if (!filtroOculto) cargar();
+  }, [cargar, filtroCat]));
 
   function toggleSearch() {
     const toShow = !showSearch;
@@ -297,7 +303,8 @@ export default function HistorialScreen() {
         <>
           <Text style={s.secLbl}>Cuenta</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.banksRow}>
+            contentContainerStyle={s.banksRow}
+            style={s.banksRowWrap}>
             <View style={s.bkWrap}>
               <TouchableOpacity style={[s.bk, !filtroBanco && s.bkOn]} onPress={() => setFiltroBanco(null)}>
                 <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
@@ -340,25 +347,42 @@ export default function HistorialScreen() {
 
       {/* ── Categorías ── */}
       <Text style={s.secLbl}>Categoría</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[s.banksRow, { paddingBottom: 10 }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.catRow}
+        style={s.catRowWrap}
+      >
         <TouchableOpacity
-          style={[s.catChip, { backgroundColor: t.card, borderColor: t.hairline }, !filtroCat && s.catChipOn]}
-          onPress={() => setFiltroCat(null)}>
+          style={[s.catChip, !filtroCat
+            ? { backgroundColor: t.accentBg, borderColor: t.accent }
+            : { backgroundColor: t.card, borderColor: t.hairline }]}
+          onPress={() => setFiltroCat(null)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !filtroCat }}
+          accessibilityLabel="Mostrar todas las categorías"
+          hitSlop={CHIP_HIT_SLOP}>
           <Text style={[s.catChipLbl, { color: !filtroCat ? t.ink : t.ink3 }]}>Todas</Text>
         </TouchableOpacity>
         {catsVisibles.map(c => {
           const isIng = c.tipo === 'ingreso';
           const bg     = isIng ? t.positiveBg : t.negativeBg;
-          const border = t.hairline;
           const clr    = isIng ? t.positive : t.negative;
           const activa = filtroCat === c.id;
           return (
             <TouchableOpacity
               key={c.id}
-              style={[s.catChip, { backgroundColor: bg, borderColor: border }, activa && { borderWidth: 1.5, borderColor: clr }]}
-              onPress={() => setFiltroCat(prev => prev === c.id ? null : c.id)}>
-              <Icon name={c.icono} size={13} color={clr} />
+              style={[s.catChip, activa
+                ? { backgroundColor: t.card, borderColor: clr }
+                : { backgroundColor: bg, borderColor: t.hairline }]}
+              onPress={() => setFiltroCat(prev => prev === c.id ? null : c.id)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: activa }}
+              accessibilityLabel={`Filtrar por ${c.nombre}`}
+              hitSlop={CHIP_HIT_SLOP}>
+              <Icon name={c.icono} size={14} color={clr} />
               <Text style={[s.catChipLbl, { color: clr }]}>{c.nombre}</Text>
             </TouchableOpacity>
           );
@@ -524,6 +548,10 @@ function useStyles(t: typeof colors) {
       paddingHorizontal: 20,
       paddingBottom: 6,
     },
+    banksRowWrap: {
+      flexGrow: 0,
+      flexShrink: 0,
+    },
     banksRow: {
       paddingHorizontal: 16,
       paddingBottom: 10,
@@ -555,22 +583,33 @@ function useStyles(t: typeof colors) {
       textAlign: 'center',
       maxWidth: 44,
     },
+    catRowWrap: {
+      flexGrow: 0,
+      flexShrink: 0,
+    },
+    catRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingTop: 2,
+      paddingBottom: 8,
+    },
     catChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 8,
-      borderWidth: 0.5,
-    },
-    catChipOn: {
-      borderWidth: 1.5,
-      borderColor: t.ink3,
+      flexShrink: 0,
+      gap: 6,
+      minHeight: 32,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 9,
+      borderWidth: 1,
     },
     catChipLbl: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '500',
+      flexShrink: 0,
     },
   });
 }

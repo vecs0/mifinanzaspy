@@ -2,13 +2,14 @@
  * (tabs)/chat.tsx
  * Responsabilidad: Asesor IA vía Gemini
  * Usado por: expo-router (tab)
- * Depende de: database, classifier, apiConfig
+ * Depende de: database, classifier, apiConfig, asesor, dateKeys
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Modal,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Modal, BackHandler,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import {
@@ -17,7 +18,13 @@ import {
 } from '@/services/database';
 import { calcularProyeccion } from '@/services/classifier';
 import { useVoiceInput } from '@/services/voiceInput';
-import { llamarAIProxy } from '@/services/apiConfig';
+import { llamarAIProxy, workerConfigurado } from '@/services/apiConfig';
+import {
+  clasificarConsulta, clasificarErrorAsesor, construirInstruccionSistema,
+  decidirQueGuardar, mensajeErrorAsesor, respuestaFueraDeAlcance,
+  type AsesorError,
+} from '@/services/asesor';
+import { localDateKey, localDateTimeKey } from '@/services/dateKeys';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { useThemeCtx } from '@/services/ThemeContext';
@@ -28,7 +35,10 @@ interface Mensaje {
   rol:   'user' | 'assistant' | 'system';
   texto: string;
   fecha: Date;
+  error?: { mensaje: string; permiteReintentar: boolean };
 }
+
+type EstadoAsesor = 'listo' | 'sin_conexion' | 'no_configurado';
 
 interface InsightData {
   pct:   number;
@@ -214,7 +224,7 @@ async function construirContexto(): Promise<string> {
   }).join('\n');
 
   return `
-FECHA: ${new Date().toISOString().slice(0, 10)}
+FECHA: ${localDateKey()}
 SALDO TOTAL CONSOLIDADO: ${fmtGs(saldoTotal)}
 
 CUENTAS:
@@ -238,80 +248,73 @@ ${txTexto || '  Sin transacciones'}
 `.trim();
 }
 
-const SYSTEM_PROMPT = `Sos un asesor financiero personal para un usuario en Paraguay.
-Tenés acceso completo a su historial de transacciones, saldos actuales por banco,
-y proyección de gastos del mes.
+function textoDeError(valor: unknown): string {
+  if (typeof valor === 'string') return valor;
+  if (valor && typeof valor === 'object' && 'message' in valor) {
+    const mensaje = (valor as { message?: unknown }).message;
+    return typeof mensaje === 'string' ? mensaje : '';
+  }
+  return '';
+}
 
-Tu objetivo es:
-1. Responder preguntas sobre el estado de sus finanzas con datos reales
-2. Evaluar si puede permitirse un gasto específico
-3. Dar sugerencias de ahorro basadas en sus patrones de gasto
-4. Emitir un análisis del estado financiero cuando se lo pidan
-5. Proponer un plan para llegar a fin de mes si la situación es ajustada
+function estadoTrasError(error: AsesorError): EstadoAsesor {
+  if (error.tipo === 'offline' || error.tipo === 'tiempo_agotado') return 'sin_conexion';
+  if (error.tipo === 'no_configurado') return 'no_configurado';
+  if (mensajeErrorAsesor(error).mensaje === mensajeErrorAsesor({ tipo: 'no_configurado' }).mensaje) {
+    return 'no_configurado';
+  }
+  return 'listo';
+}
 
-Reglas:
-- Hablá en español rioplatense (vos, tenés, podés)
-- Los montos siempre en Guaraníes (Gs) con puntos de miles: Gs 1.500.000
-- Sé directo y concreto, no uses frases genéricas
-- Si el usuario puede permitirse algo, decilo claro. Si no, explicá por qué
-- Basá todas las respuestas en los datos reales del contexto financiero provisto
-- No inventes datos que no estén en el contexto
-- Conocés todos los bancos paraguayos: Itaú, Continental, GNB, Sudameris, BNF, Basa,
-  Atlas, Familiar, BANCOP, Interfisa, Solar, Regional, Ueno, ZETA, Citibank,
-  BNA, Banco do Brasil, Tigo Money, Personal Pay, Pago Express, Mango
-
-Formato para gráfico de barras:
-[GRAFICO:BARRAS]
-Título del gráfico
-Etiqueta1: 1500000
-Etiqueta2: 800000
-[/GRAFICO]
-Usalo para comparar gastos por categoría, banco, o mes. Máximo 6 barras.
-
-Formato para tarjeta de insight financiero (progreso visual):
-[INSIGHT:PORCENTAJE:TITULO:DESCRIPCION]
-Ejemplo: [INSIGHT:71:Gastado en mayo:Podés cerrar bien si bajás el ritmo en restaurantes]
-Usalo cuando mencionés porcentajes de gasto o progreso financiero del mes.`;
-
-async function llamarGemini(historial: Mensaje[], texto: string): Promise<string> {
+async function pedirRespuestaAsesor(historial: Mensaje[], texto: string): Promise<string> {
   const contexto = await construirContexto();
   const msgs = [...historial, { id: '', rol: 'user' as const, texto, fecha: new Date() }]
     .filter((m, i) => m.rol !== 'assistant' || i > 0);
 
   const resp = await llamarAIProxy({
     system_instruction: {
-      parts: [{ text: `${SYSTEM_PROMPT}\n\nContexto financiero del usuario:\n${contexto}` }],
+      parts: [{ text: construirInstruccionSistema(contexto) }],
     },
     contents: msgs.map(m => ({
       role: m.rol === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.texto }],
     })),
     generationConfig: { maxOutputTokens: 1024 },
-  });
+  }, { reintentos: 0, timeoutMs: 30000 });
 
   if (!resp.ok) {
-    const body = await resp.text();
-    let detalle = '';
-    try { detalle = JSON.parse(body).error?.message ?? ''; } catch { detalle = ''; }
-    throw { status: resp.status, detalle };
+    const cuerpo = await resp.text();
+    let parsed: Record<string, unknown> | null = null;
+    try { parsed = JSON.parse(cuerpo) as Record<string, unknown>; } catch { parsed = null; }
+    const err: AsesorError = {
+      tipo: 'http',
+      status: resp.status,
+      error: textoDeError(parsed?.error),
+      detalle: typeof parsed?.detalle === 'string' ? parsed.detalle : textoDeError(parsed?.detail),
+    };
+    throw err;
   }
-  const data = await resp.json();
-  if (data.error) throw { status: resp.status, detalle: data.detalle ?? data.error };
-  const candidates = data.candidates ?? data.result?.candidates ?? [];
-  const respuesta  = candidates[0]?.content?.parts?.[0]?.text;
-  if (!respuesta) throw { status: 0, detalle: 'Respuesta vacía' };
-  return respuesta;
-}
 
-function mensajeError(err: unknown): string {
-  if (err && typeof err === 'object' && 'status' in err) {
-    const e = err as { status: number; detalle: string };
-    if (e.status === 400 || e.status === 403) return 'Error de autenticación con el asistente IA. Verificá la key en el Worker.';
-    if (e.status >= 500) return 'El servidor de Gemini no está disponible. Intentalo de nuevo.';
-    return `Error del servidor (${e.status}). Intentalo de nuevo.`;
+  const data = await resp.json();
+  if (data.error) {
+    const err: AsesorError = {
+      tipo: 'http',
+      status: resp.status,
+      error: textoDeError(data.error),
+      detalle: typeof data.detalle === 'string' ? data.detalle : textoDeError(data.detail),
+    };
+    throw err;
   }
-  if (err instanceof TypeError) return 'No hay conexión a internet. Verificá tu conexión.';
-  return 'Ocurrió un error inesperado. Intentalo de nuevo.';
+
+  const candidates = data.candidates ?? data.result?.candidates ?? [];
+  const respuesta = candidates[0]?.content?.parts?.[0]?.text;
+  if (!respuesta) {
+    const bloqueada = Boolean(data.promptFeedback?.blockReason)
+      || /safety|blocked|prohibited|recitation/i.test(String(candidates[0]?.finishReason ?? ''));
+    const err: AsesorError = { tipo: 'respuesta_vacia', bloqueada };
+    throw err;
+  }
+  return respuesta;
 }
 
 const SALUDOS = [
@@ -346,14 +349,39 @@ export default function ChatScreen() {
   const [selMode, setSelMode]                 = useState(false);
   const [selected, setSelected]               = useState<Set<string>>(new Set());
   const [confirmIds, setConfirmIds]           = useState<string[] | null>(null);
+  const [estadoEnvio, setEstadoEnvio]         = useState<EstadoAsesor>(() =>
+    workerConfigurado() ? 'listo' : 'no_configurado');
 
   const listRef = useRef<FlatList>(null);
   const cargado = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!menuOpen && !showHistorial) return;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (showHistorial) {
+          setShowHistorial(false);
+          setSelMode(false);
+          setSelected(new Set());
+        } else {
+          setMenuOpen(false);
+        }
+        return true;
+      });
+      return () => subscription.remove();
+    }, [menuOpen, showHistorial])
+  );
 
   const aiBubbleBg   = t.card;
   const aiBubbleTxt  = t.ink;
   const userBubbleBg = t.accent;
   const userBubbleTxt = t.onAccent;
+  const estadoAsesor: EstadoAsesor = workerConfigurado() ? estadoEnvio : 'no_configurado';
+  const estadoHeader = estadoAsesor === 'listo'
+    ? { texto: 'Conectado · ve todo tu historial', color: t.positive }
+    : estadoAsesor === 'sin_conexion'
+      ? { texto: 'Sin conexión · revisá tu internet', color: t.negative }
+      : { texto: 'No configurado · falta configurarlo', color: t.ink3 };
 
   useEffect(() => {
     if (voice.transcript && !voice.recognizing) setInput(voice.transcript);
@@ -415,49 +443,103 @@ export default function ChatScreen() {
     });
   }
 
-  const enviar = useCallback(async () => {
+  async function procesarEnvio(msgUser: Mensaje, historial: Mensaje[]) {
+    setEnviando(true);
+    const clase = clasificarConsulta(msgUser.texto);
+    const persistencia = decidirQueGuardar(clase === 'financiera' ? 'exito' : 'rechazo_local');
+    try {
+      if (clase !== 'financiera') {
+        const msgLocal: Mensaje = {
+          id: `${Date.now()}-local`,
+          rol: 'assistant',
+          texto: respuestaFueraDeAlcance(clase),
+          fecha: new Date(),
+        };
+        setMensajes(prev => [...prev, msgLocal]);
+        return;
+      }
+
+      try {
+        const respuesta = await pedirRespuestaAsesor(historial, msgUser.texto);
+        const msgAssistant: Mensaje = {
+          id: `${Date.now()}-ia`,
+          rol: 'assistant',
+          texto: respuesta,
+          fecha: new Date(),
+        };
+        setMensajes(prev => [...prev, msgAssistant]);
+        setEstadoEnvio(workerConfigurado() ? 'listo' : 'no_configurado');
+
+        const sid = chatSessionId.current;
+        try {
+          if (persistencia.usuario) {
+            guardarMensajeChat({ rol: 'user', texto: msgUser.texto, fecha: localDateTimeKey(msgUser.fecha), sessionId: sid });
+          }
+          if (persistencia.asistente) {
+            guardarMensajeChat({ rol: 'assistant', texto: respuesta, fecha: localDateTimeKey(msgAssistant.fecha), sessionId: sid });
+          }
+        } catch { console.warn('[chat] Error guardando mensaje de chat'); }
+        cargarHistorial();
+      } catch (err) {
+        const clasificado = clasificarErrorAsesor(err);
+        const { mensaje, permiteReintentar } = mensajeErrorAsesor(clasificado);
+        setMensajes(prev => prev.map(m => (
+          m.id === msgUser.id ? { ...m, error: { mensaje, permiteReintentar } } : m
+        )));
+        setEstadoEnvio(estadoTrasError(clasificado));
+      }
+    } finally {
+      setEnviando(false);
+      setTimeout(() => listRef.current?.scrollToEnd(), 100);
+    }
+  }
+
+  async function enviar() {
     const texto = input.trim();
     if (!texto || enviando) return;
     setInput('');
-    const msgUser: Mensaje = { id: Date.now().toString(), rol: 'user', texto, fecha: new Date() };
+    const msgUser: Mensaje = { id: `${Date.now()}-user`, rol: 'user', texto, fecha: new Date() };
     setMensajes(prev => [...prev, msgUser]);
-    setEnviando(true);
+    await procesarEnvio(msgUser, mensajes);
+  }
 
-    let respuesta = '';
-    let errorFinal = '';
-    try {
-      respuesta = await llamarGemini(mensajes, texto);
-    } catch (err) {
-      try {
-        respuesta = await llamarGemini(mensajes, texto);
-      } catch (err2) {
-        errorFinal = mensajeError(err2);
-      }
-    }
+  async function reintentar(id: string) {
+    if (enviando) return;
+    const msgUser = mensajes.find(m => m.id === id);
+    if (!msgUser || !msgUser.error) return;
+    setMensajes(prev => prev.map(m => (m.id === id ? { ...m, error: undefined } : m)));
+    await procesarEnvio(msgUser, mensajes.filter(m => m.id !== id));
+  }
 
-    const msgAssistant: Mensaje = {
-      id: (Date.now() + 1).toString(),
-      rol: 'assistant',
-      texto: errorFinal || respuesta,
-      fecha: new Date(),
-    };
-    setMensajes(prev => [...prev, msgAssistant]);
-    const sid = chatSessionId.current;
-    guardarMensajeChat({ rol: msgUser.rol, texto: msgUser.texto, fecha: msgUser.fecha.toISOString(), sessionId: sid });
-    guardarMensajeChat({ rol: 'assistant', texto: msgAssistant.texto, fecha: msgAssistant.fecha.toISOString(), sessionId: sid });
-    cargarHistorial();
-    setEnviando(false);
-    setTimeout(() => listRef.current?.scrollToEnd(), 100);
-  }, [input, enviando, mensajes]);
-
-  const renderMensaje = useCallback(({ item }: { item: Mensaje }) => {
+  function renderMensaje({ item }: { item: Mensaje }) {
     if (item.rol === 'system') return null;
     if (item.rol === 'user') {
       return (
-        <View style={ch.userRow}>
-          <View style={[ch.bubble, ch.userBubble, { backgroundColor: userBubbleBg }]}>
-            <Text style={[ch.bubbleTxt, { color: userBubbleTxt }]}>{item.texto}</Text>
+        <View style={{ gap: 4 }}>
+          <View style={ch.userRow}>
+            <View style={[ch.bubble, ch.userBubble, { backgroundColor: userBubbleBg }]}>
+              <Text style={[ch.bubbleTxt, { color: userBubbleTxt }]}>{item.texto}</Text>
+            </View>
           </View>
+          {item.error && (
+            <View style={[ch.errorBox, { backgroundColor: t.negativeBg }]}>
+              <Text style={[ch.errorTxt, { color: t.negative }]}>{item.error.mensaje}</Text>
+              {item.error.permiteReintentar && (
+                <TouchableOpacity
+                  style={[ch.retryBtn, { borderColor: enviando ? t.hairline : t.negative }]}
+                  onPress={() => reintentar(item.id)}
+                  disabled={enviando}
+                  activeOpacity={0.7}
+                  hitSlop={hit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reintentar consulta"
+                  accessibilityState={{ disabled: enviando }}
+                >
+                  <Text style={[ch.retryTxt, { color: enviando ? t.ink3 : t.negative }]}>Reintentar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
       );
     }
@@ -487,7 +569,7 @@ export default function ChatScreen() {
         )}
       </View>
     );
-  }, [dark, t, aiBubbleBg, aiBubbleTxt, userBubbleBg, userBubbleTxt]);
+  }
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.bg }}>
@@ -504,13 +586,13 @@ export default function ChatScreen() {
                 style={ch.hdrAvatar}
                 resizeMode="cover"
               />
-              <View style={[ch.statusDot, { backgroundColor: t.positive, borderColor: t.bg }]} />
+              <View style={[ch.statusDot, { backgroundColor: estadoHeader.color, borderColor: t.bg }]} />
             </View>
             <View>
               <Text style={[ch.hdrName, { color: t.ink }]}>Asesor</Text>
               <View style={ch.statusRow}>
-                <View style={[ch.statusDotInline, { backgroundColor: t.positive }]} />
-                <Text style={[ch.hdrStatus, { color: t.positive }]}>Conectado · ve todo tu historial</Text>
+                <View style={[ch.statusDotInline, { backgroundColor: estadoHeader.color }]} />
+                <Text style={[ch.hdrStatus, { color: estadoHeader.color }]}>{estadoHeader.texto}</Text>
               </View>
             </View>
           </View>
@@ -800,6 +882,10 @@ const ch = StyleSheet.create({
   dropSep:         { height: StyleSheet.hairlineWidth, marginHorizontal: 14 },
   aiRow:           { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   userRow:         { flexDirection: 'row', justifyContent: 'flex-end' },
+  errorBox:        { marginLeft: 32, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  errorTxt:        { fontSize: 12, lineHeight: 17, fontFamily: fonts.ui },
+  retryBtn:        { alignSelf: 'flex-start', minHeight: 32, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  retryTxt:        { fontSize: 12, fontFamily: fonts.ui, fontWeight: '600' },
   bubble:          { maxWidth: '80%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16 },
   aiBubble:        { borderBottomLeftRadius: 4 },
   userBubble:      { borderBottomRightRadius: 4 },

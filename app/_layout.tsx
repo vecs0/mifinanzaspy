@@ -4,10 +4,10 @@ import '../global.css';
  * _layout.tsx
  * Responsabilidad: Root layout — providers, splash, onboarding vs app decision
  * Usado por: expo-router (root)
- * Depende de: database, smsService, notificationService, ThemeContext, reminders, metas
+ * Depende de: database, encryption, smsService, notificationService, ThemeContext, reminders, metas
  */
 import { useEffect, useState, useContext, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, useColorScheme, AppState, type AppStateStatus } from 'react-native';
 import { Stack, Redirect, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -15,18 +15,25 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getOnboarding, getDB, getConfig, setConfig, notifBienvenidaPendiente, insertarNotificacion } from '@/services/database';
+import { getOnboarding, getDB, getConfig, setConfig, notifBienvenidaPendiente, insertarNotificacion, migrarCamposCifrados } from '@/services/database';
+import { precargarClave } from '@/services/encryption';
 import { iniciarEscuchaSMS, importarHistorialSMS } from '@/services/smsService';
 import { iniciarEscuchaNotificaciones, programarRecordatorioDiario, programarReporteSemanal } from '@/services/notificationService';
 import { ThemeProvider, ThemeContext } from '@/services/ThemeContext';
 import { initReminderChannel } from '@/services/reminders';
 import { clearDemoMetas } from '@/services/metas';
+import { consumirSalidaSolicitada } from '@/services/salidaApp';
+import { colors, colorsDark } from '@/theme/design-system';
 import SplashLogo from '@/components/SplashVideo';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { FloatingNotificationProvider } from '@/components/FloatingNotification';
 import DeepLinkCaptura from '@/components/DeepLinkCaptura';
 
 SplashScreen.preventAutoHideAsync();
+
+export const unstable_settings = {
+  anchor: '(tabs)',
+};
 
 type AppStatus = 'loading' | 'onboarding' | 'app';
 
@@ -51,6 +58,16 @@ export default function RootLayout() {
   const [splashAnimDone, setSplashAnimDone] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const splashOpacity = useRef(new Animated.Value(1)).current;
+  const splashNativoOculto = useRef(false);
+
+  const scheme = useColorScheme();
+  const splashBg = (scheme === 'dark' ? colorsDark : colors).bg;
+
+  const ocultarSplashNativo = () => {
+    if (splashNativoOculto.current) return;
+    splashNativoOculto.current = true;
+    SplashScreen.hideAsync().catch(() => {});
+  };
 
   const [fontsLoaded] = useFonts({
     'Newsreader-Italic': require('@/assets/fonts/Newsreader-Italic.ttf'),
@@ -72,6 +89,14 @@ export default function RootLayout() {
           setConfig('bancos_seleccionados', '');
           setConfig('banco_manual_nombre', '');
         }
+
+        try {
+          await precargarClave();
+          migrarCamposCifrados();
+        } catch (e) {
+          console.warn('[_layout] No se pudo precargar la clave de cifrado:', e);
+        }
+
         setEstado(listo ? 'app' : 'onboarding');
 
         if (listo) {
@@ -111,8 +136,7 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, estado]);
 
-  // When BOTH app is ready AND splash animation finished → fade out JS layer first,
-  // THEN hide native splash so the user never sees the intermediate SplashLogo.
+  // When BOTH app is ready AND splash animation finished → fade out JS layer, then reveal the Stack
   useEffect(() => {
     if (appReady && splashAnimDone) {
       Animated.timing(splashOpacity, {
@@ -120,11 +144,21 @@ export default function RootLayout() {
         duration: 280,
         useNativeDriver: true,
       }).start(() => {
-        SplashScreen.hideAsync();
         setSplashDone(true);
       });
     }
   }, [appReady, splashAnimDone]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'active') return;
+      if (!consumirSalidaSolicitada()) return;
+      splashOpacity.setValue(1);
+      setSplashAnimDone(false);
+      setSplashDone(false);
+    });
+    return () => subscription.remove();
+  }, [splashOpacity]);
 
   useEffect(() => {
     if (estado !== 'app') return;
@@ -145,7 +179,10 @@ export default function RootLayout() {
 
   if (!splashDone) {
     return (
-      <Animated.View style={{ flex: 1, opacity: splashOpacity }}>
+      <Animated.View
+        style={{ flex: 1, opacity: splashOpacity, backgroundColor: splashBg }}
+        onLayout={ocultarSplashNativo}
+      >
         <SplashLogo onReady={() => setSplashAnimDone(true)} />
       </Animated.View>
     );

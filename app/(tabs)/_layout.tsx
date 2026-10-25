@@ -4,17 +4,44 @@
  * Usado por: expo-router (tabs layout root)
  * Depende de: ThemeContext
  */
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Tabs, usePathname, router } from 'expo-router';
-import { View, Text, TouchableOpacity, BackHandler, StyleSheet, Modal, Animated } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { Tabs, router, useNavigation } from 'expo-router';
+import { View, Text, TouchableOpacity, BackHandler, StyleSheet, Modal, Animated, AppState, type AppStateStatus } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useThemeCtx } from '@/services/ThemeContext';
+import { resolverBack, type EstadoBack } from '@/services/navegacionBack';
+import { marcarSalidaSolicitada } from '@/services/salidaApp';
 import { colors, colorsDark, borderRadius as br } from '@/theme/design-system';
 
 const TAB_PATHS = ['/', '/historial', '/reportes', '/crecer', '/chat'] as const;
-type TabPath = typeof TAB_PATHS[number];
+const TABS_ROUTE = '(tabs)';
+const ONBOARDING_ROUTE = 'onboarding';
+
+type RutaNav = {
+  name: string;
+  state?: { index?: number; routes?: readonly { name: string }[] };
+};
+
+type EstadoNav = { index?: number; routes?: readonly RutaNav[] } | undefined;
+
+function indiceTab(state: EstadoNav): number {
+  const tabs = state?.routes?.find(r => r.name === TABS_ROUTE);
+  return tabs?.state?.index ?? 0;
+}
+
+function estadoBack(state: EstadoNav, dialogoSalidaVisible: boolean): EstadoBack {
+  const routes = state?.routes ?? [];
+  const enfocada = routes[state?.index ?? 0];
+  return {
+    capaActiva: enfocada && enfocada.name !== TABS_ROUTE ? 'pantalla-apilada' : 'ninguna',
+    indexTab: indiceTab(state),
+    tabsDebajo: routes.some(r => r.name === TABS_ROUTE),
+    onboardingEnCurso: enfocada?.name === ONBOARDING_ROUTE,
+    dialogoSalidaVisible,
+  };
+}
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const { dark } = useThemeCtx();
@@ -98,40 +125,49 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { dark } = useThemeCtx();
   const [mostrarSalir, setMostrarSalir] = useState(false);
-  const pathname = usePathname();
-  const pathRef = useRef<TabPath>(pathname as TabPath);
+  const navigation = useNavigation();
 
   const t = dark ? colorsDark : colors;
 
   useEffect(() => {
-    pathRef.current = pathname as TabPath;
-  }, [pathname]);
-
-  const getTabIndex = useCallback(() => {
-    const idx = TAB_PATHS.indexOf(pathRef.current);
-    return idx >= 0 ? idx : 0;
-  }, []);
-
-  useEffect(() => {
     const onBack = () => {
-      const idx = getTabIndex();
-      if (idx === 0) {
-        setMostrarSalir(true);
-      } else {
+      const state = navigation.getState();
+      if (!state) return false;
+      const estado = estadoBack(state as unknown as EstadoNav, mostrarSalir);
+      const accion = resolverBack(estado);
+      if (accion === 'ir-a-panel') {
         router.navigate('/' as any);
+        return true;
       }
-      return true;
+      if (accion === 'mostrar-dialogo-salida') {
+        setMostrarSalir(true);
+        return true;
+      }
+      return false;
     };
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => subscription.remove();
-  }, [getTabIndex]);
+  }, [navigation, mostrarSalir]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (estado: AppStateStatus) => {
+      if (estado === 'background' || estado === 'inactive') setMostrarSalir(false);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const salirDeLaApp = () => {
+    setMostrarSalir(false);
+    marcarSalidaSolicitada();
+    requestAnimationFrame(() => BackHandler.exitApp());
+  };
 
   const swipe = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX([-22, 22])
     .failOffsetY([-14, 14])
     .onEnd((e) => {
-      const idx = getTabIndex();
+      const idx = indiceTab(navigation.getState() as unknown as EstadoNav);
       if (e.translationX < -50 && idx < TAB_PATHS.length - 1) {
         router.navigate(TAB_PATHS[idx + 1] as any);
       } else if (e.translationX > 50 && idx > 0) {
@@ -143,6 +179,7 @@ export default function TabsLayout() {
     <GestureDetector gesture={swipe}>
     <View style={{ flex: 1 }}>
       <Tabs
+        backBehavior="firstRoute"
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
@@ -211,7 +248,7 @@ export default function TabsLayout() {
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 style={{ flex: 1, minHeight: 48, justifyContent: 'center', borderRadius: br.md, backgroundColor: t.accent, alignItems: 'center' }}
-                onPress={() => BackHandler.exitApp()}
+                onPress={salirDeLaApp}
               >
                 <Text style={{ color: t.onAccent, fontSize: 14, fontWeight: '600' }}>Salir</Text>
               </TouchableOpacity>

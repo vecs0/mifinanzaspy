@@ -12,10 +12,10 @@ RATE_LIMIT_PER_MIN = "30"
 #   wrangler secret put APP_TOKEN   (opcional, mismo valor que EXPO_PUBLIC_WORKER_APP_TOKEN)
 
 # Rate limit compartido (recomendado). Descomentar:
-# [[unsafe.bindings]]
-# name = "RATE_LIMITER"
-# type = "ratelimit"
-# namespace_id = "1001"
-# simple = { limit = 30, period = 60 }
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
 
 # APP_TOKEN viaja en el bundle de la app (EXPO_PUBLIC_*): solo frena abuso casual, no es secreto real.
