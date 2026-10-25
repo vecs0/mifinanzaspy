@@ -60,13 +60,20 @@ function hexToUint8Array(hex: string): Uint8Array {
 }
 
 let keyPromise: Promise<string> | null = null;
+let claveHexCache: string | null = null;
 
 function getKey(): Promise<string> {
   if (!keyPromise) {
-    keyPromise = getOrCreateKey().catch(e => {
-      keyPromise = null;
-      throw e;
-    });
+    keyPromise = getOrCreateKey()
+      .then(key => {
+        claveHexCache = key;
+        return key;
+      })
+      .catch(e => {
+        keyPromise = null;
+        claveHexCache = null;
+        throw e;
+      });
   }
   return keyPromise;
 }
@@ -127,4 +134,21 @@ export async function decrypt(encoded: string | null): Promise<string | null> {
     return aesDecode(encoded.slice(V2_PREFIX.length), key);
   }
   return decodeLegacy(encoded, key);
+}
+
+export async function precargarClave(): Promise<void> {
+  await getKey();
+}
+
+export function encriptarCampo(text: string | null): string | null {
+  if (!text) return text;
+  if (!claveHexCache) throw new Error('Clave no precargada');
+  return V2_PREFIX + aesEncode(text, claveHexCache);
+}
+
+export function desencriptarCampo(encoded: string | null): string | null {
+  if (!encoded) return encoded;
+  if (!encoded.startsWith(V2_PREFIX)) return encoded;
+  if (!claveHexCache) throw new Error('Clave no precargada');
+  return aesDecode(encoded.slice(V2_PREFIX.length), claveHexCache);
 }

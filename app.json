@@ -7,11 +7,6 @@
     "scheme": "mifinanzaspy",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FAF8F4"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -36,11 +31,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "splash": {
-        "backgroundColor": "#FAF8F4",
-        "imageWidth": 280,
-        "resizeMode": "contain"
-      },
       "permissions": [
         "RECEIVE_SMS",
         "READ_SMS",
@@ -63,10 +53,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FAF8F4",
-          "image": "./assets/splash.png",
+          "backgroundColor": "#F5F1EB",
+          "image": "./assets/splash-transparente.png",
           "imageWidth": 280,
-          "resizeMode": "contain"
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#1A1714",
+            "image": "./assets/splash-transparente.png"
+          }
         }
       ]
     ],

@@ -80,4 +80,45 @@ describe('encryption', () => {
     const key = await store.getItemAsync('db_encryption_key');
     expect(key).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it('precargarClave + encriptarCampo devuelve v2 y roundtrip', async () => {
+    const { precargarClave, encriptarCampo, desencriptarCampo } = await cargar(KEY_A);
+    await precargarClave();
+    const c = encriptarCampo('mensaje sensible del chat');
+    expect(c!.startsWith('v2:')).toBe(true);
+    expect(c).not.toContain('mensaje sensible');
+    expect(desencriptarCampo(c)).toBe('mensaje sensible del chat');
+  });
+
+  it('encriptarCampo(null) y encriptarCampo("") pasan sin cifrar; desencriptarCampo(null) igual', async () => {
+    const { precargarClave, encriptarCampo, desencriptarCampo } = await cargar(KEY_A);
+    await precargarClave();
+    expect(encriptarCampo(null)).toBeNull();
+    expect(encriptarCampo('')).toBe('');
+    expect(desencriptarCampo(null)).toBeNull();
+  });
+
+  it('desencriptarCampo devuelve texto plano legacy (sin v2) tal cual', async () => {
+    const { precargarClave, desencriptarCampo } = await cargar(KEY_A);
+    await precargarClave();
+    expect(desencriptarCampo('texto viejo sin cifrar')).toBe('texto viejo sin cifrar');
+  });
+
+  it('encriptarCampo sin precargarClave lanza Clave no precargada', async () => {
+    const { encriptarCampo } = await cargar(KEY_A);
+    expect(() => encriptarCampo('x')).toThrow('Clave no precargada');
+  });
+
+  it('desencriptarCampo sin precargarClave devuelve legacy y falla solo con payload v2', async () => {
+    const { desencriptarCampo } = await cargar(KEY_A);
+    expect(desencriptarCampo('plano')).toBe('plano');
+    expect(() => desencriptarCampo('v2:AAAA')).toThrow('Clave no precargada');
+  });
+
+  it('getKey via encrypt tambien deja la clave disponible para encriptarCampo', async () => {
+    const { encrypt, encriptarCampo, desencriptarCampo } = await cargar(KEY_A);
+    await encrypt('calienta la clave');
+    const c = encriptarCampo('sin precargarClave explicito');
+    expect(desencriptarCampo(c)).toBe('sin precargarClave explicito');
+  });
 });

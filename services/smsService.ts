@@ -121,7 +121,7 @@ export function iniciarEscuchaSMS(
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Nuevo movimiento registrado',
-              body: `${desc} — ${montoStr}`,
+              body: 'Abrí la app para verlo.',
               data: { screen: 'notificaciones' },
               sound: true,
             },
