@@ -10,6 +10,7 @@ import { getRandomBytesAsync } from 'expo-crypto';
 import { getDB } from '@/services/database';
 import { asegurarTablaMetas } from '@/services/metas';
 import { encrypt, decrypt } from '@/services/encryption';
+import { normalizarArchivado } from '@/services/archivo';
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_SCHEMA_VERSION = 1;
@@ -53,6 +54,7 @@ export interface ResultadoExport {
   nombre: string;
   conteos: Record<string, number>;
   camposNoDescifrables: number;
+  archivados: number;
 }
 
 export interface ResultadoRestore {
@@ -61,6 +63,8 @@ export interface ResultadoRestore {
   despues: Record<string, number>;
   insertados: Record<string, number>;
   omitidos: number;
+  omitidosArchivados: number;
+  archivadoNormalizado: number;
 }
 
 export type CodigoErrorBackup =
@@ -269,21 +273,28 @@ function leerTablas(): Record<string, FilaBackup[]> {
   return out;
 }
 
-export async function construirPayload(): Promise<{ payload: PayloadBackup; camposNoDescifrables: number }> {
+export async function construirPayload(): Promise<{
+  payload: PayloadBackup;
+  camposNoDescifrables: number;
+  archivados: number;
+}> {
   const tables = leerTablas();
   let camposNoDescifrables = 0;
+  let archivados = 0;
   const tx: FilaBackup[] = [];
   for (const fila of tables.transacciones) {
     const desc = await descifrarCampo(fila.descripcion);
     const sms = await descifrarCampo(fila.sms_raw);
     if (desc.fallo) camposNoDescifrables++;
     if (sms.fallo) camposNoDescifrables++;
+    if (normalizarArchivado(fila.archivado) === 1) archivados++;
     tx.push({ ...fila, descripcion: desc.texto ?? '', sms_raw: sms.texto });
   }
   tables.transacciones = tx;
   return {
     payload: { version: BACKUP_SCHEMA_VERSION, createdAt: new Date().toISOString(), tables },
     camposNoDescifrables,
+    archivados,
   };
 }
 
@@ -344,13 +355,13 @@ export async function exportarBackup(
   if (passphrase.length < PASSPHRASE_MIN) {
     throw new BackupError('passphrase_corta', `La contraseña debe tener al menos ${PASSPHRASE_MIN} caracteres`);
   }
-  const { payload, camposNoDescifrables } = await construirPayload();
+  const { payload, camposNoDescifrables, archivados } = await construirPayload();
   const bytes = await empaquetarBackup(payload, passphrase, opciones);
   const nombre = `mifinanzaspy-backup-${marcaTiempo()}.mfbk`;
   const uri = await escribirYCompartir(nombre, bytes, 'application/octet-stream');
   const conteos: Record<string, number> = {};
   for (const t of TABLAS_BACKUP) conteos[t] = payload.tables[t].length;
-  return { uri, nombre, conteos, camposNoDescifrables };
+  return { uri, nombre, conteos, camposNoDescifrables, archivados };
 }
 
 export async function seleccionarArchivoBackup(): Promise<string | null> {
@@ -410,14 +421,26 @@ async function recifrarTransacciones(filas: FilaBackup[]): Promise<FilaBackup[]>
   return out;
 }
 
+function normalizarTransacciones(filas: FilaBackup[]): { filas: FilaBackup[]; normalizadas: number } {
+  let normalizadas = 0;
+  const out = filas.map(f => {
+    const marcado = f.archivado;
+    if (marcado !== undefined && marcado !== 0 && marcado !== 1) normalizadas++;
+    return { ...f, archivado: normalizarArchivado(marcado) };
+  });
+  return { filas: out, normalizadas };
+}
+
 export async function restaurarPayload(payload: PayloadBackup, modo: ModoRestore): Promise<ResultadoRestore> {
   const db = getDB();
   asegurarTablaMetas();
+  const normalizadas = normalizarTransacciones(payload.tables.transacciones);
   const tablas: Record<string, FilaBackup[]> = { ...payload.tables };
-  tablas.transacciones = await recifrarTransacciones(payload.tables.transacciones);
+  tablas.transacciones = await recifrarTransacciones(normalizadas.filas);
   const antes = contarTablas();
   const insertados: Record<string, number> = {};
   let omitidos = 0;
+  let omitidosArchivados = 0;
 
   try {
     db.withTransactionSync(() => {
@@ -438,11 +461,12 @@ export async function restaurarPayload(payload: PayloadBackup, modo: ModoRestore
         db.getAllSync<{ id: string }>('SELECT id FROM cuentas').map(r => r.id)
       );
       const txIds = new Set(db.getAllSync<{ id: string }>('SELECT id FROM transacciones').map(r => r.id));
-      const txHashes = new Set(
-        db.getAllSync<{ h: string }>(
-          'SELECT hash_verificacion AS h FROM transacciones WHERE hash_verificacion IS NOT NULL'
-        ).map(r => r.h)
-      );
+      const txHashes = new Map<string, 0 | 1>();
+      for (const r of db.getAllSync<{ h: string; archivado: number | null }>(
+        'SELECT hash_verificacion AS h, archivado AS archivado FROM transacciones WHERE hash_verificacion IS NOT NULL'
+      )) {
+        txHashes.set(r.h, normalizarArchivado(r.archivado));
+      }
       const cuentasNuevas = new Set<string>();
       for (const t of TABLAS_BACKUP) {
         const validas = columnasDestino(t);
@@ -453,14 +477,19 @@ export async function restaurarPayload(payload: PayloadBackup, modo: ModoRestore
             const hash = typeof fila.hash_verificacion === 'string' ? fila.hash_verificacion : null;
             const cuentaId = fila.cuenta_id as string;
             const cuentaExiste = cuentasLocales.has(cuentaId) || cuentasNuevas.has(cuentaId);
-            if (txIds.has(id) || (hash && txHashes.has(hash)) || !cuentaExiste) {
+            if (txIds.has(id) || !cuentaExiste) {
               omitidos++;
+              continue;
+            }
+            if (hash && txHashes.has(hash)) {
+              if (txHashes.get(hash) === 1) omitidosArchivados++;
+              else omitidos++;
               continue;
             }
             if (insertarFila(t, fila, validas, 'IGNORE')) {
               insertados[t]++;
               txIds.add(id);
-              if (hash) txHashes.add(hash);
+              if (hash) txHashes.set(hash, normalizarArchivado(fila.archivado));
               if (!cuentasNuevas.has(cuentaId)) {
                 db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [
                   fila.monto as number,
@@ -480,13 +509,17 @@ export async function restaurarPayload(payload: PayloadBackup, modo: ModoRestore
           }
         }
       }
+      db.runSync('DELETE FROM reportes_cache');
     });
   } catch (e) {
     console.warn('[Backup] Restore revertido:', e);
     throw new BackupError('restore_fallido', 'No se pudo restaurar. Tus datos actuales no fueron modificados');
   }
 
-  return { modo, antes, despues: contarTablas(), insertados, omitidos };
+  return {
+    modo, antes, despues: contarTablas(), insertados, omitidos,
+    omitidosArchivados, archivadoNormalizado: normalizadas.normalizadas,
+  };
 }
 
 export async function importarBackup(
@@ -499,7 +532,9 @@ export async function importarBackup(
   return restaurarPayload(payload, modo);
 }
 
-const CSV_COLUMNAS = ['fecha', 'cuenta', 'banco', 'tipo', 'monto', 'categoria', 'descripcion', 'fuente', 'notas'];
+export const CSV_COLUMNAS = [
+  'fecha', 'cuenta', 'banco', 'tipo', 'monto', 'categoria', 'descripcion', 'fuente', 'notas', 'archivado',
+];
 
 function celdaCSV(valor: unknown, texto: boolean): string {
   let s = valor === null || valor === undefined ? '' : String(valor);
@@ -528,6 +563,7 @@ export function generarCSV(
       celdaCSV(t.descripcion, true),
       celdaCSV(t.fuente, true),
       celdaCSV(t.notas, true),
+      celdaCSV(normalizarArchivado(t.archivado), false),
     ].join(','));
   }
   return '﻿' + lineas.join('\r\n') + '\r\n';

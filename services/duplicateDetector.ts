@@ -1,10 +1,11 @@
 /**
  * duplicateDetector
- * Responsabilidad: Detecta transacciones duplicadas por monto/fecha/descripción
+ * Responsabilidad: Detecta transacciones duplicadas por monto/fecha/descripción sin filas archivadas
  * Usado por: duplicados
- * Depende de: database
+ * Depende de: database, totales
  */
 import { getDB } from '@/services/database';
+import { esVisible } from '@/services/totales';
 import type { Transaccion } from '@/types/finance';
 
 export interface Duplicado {
@@ -18,22 +19,24 @@ export function detectarDuplicados(): Duplicado[] {
   const rows = db.getAllSync<Record<string, unknown>>(
     `SELECT * FROM transacciones ORDER BY fecha DESC`
   );
-  const txs: Transaccion[] = rows.map(r => ({
-    id: r['id'] as string,
-    cuentaId: r['cuenta_id'] as string,
-    bancoId: r['banco_id'] as string,
-    monto: r['monto'] as number,
-    tipo: r['tipo'] as any,
-    categoriaId: r['categoria_id'] as string,
-    descripcion: r['descripcion'] as string,
-    fuente: r['fuente'] as any,
-    fecha: r['fecha'] as string,
-    saldoPost: r['saldo_post'] as number | null,
-    smsRaw: r['sms_raw'] as string | null,
-    procesado: (r['procesado'] as number) === 1,
-    notas: r['notas'] as string | null,
-    adjunto: r['adjunto'] as string | null,
-  }));
+  const txs: Transaccion[] = rows
+    .filter(r => esVisible({ archivado: r['archivado'] as number | null }))
+    .map(r => ({
+      id: r['id'] as string,
+      cuentaId: r['cuenta_id'] as string,
+      bancoId: r['banco_id'] as string,
+      monto: r['monto'] as number,
+      tipo: r['tipo'] as any,
+      categoriaId: r['categoria_id'] as string,
+      descripcion: r['descripcion'] as string,
+      fuente: r['fuente'] as any,
+      fecha: r['fecha'] as string,
+      saldoPost: r['saldo_post'] as number | null,
+      smsRaw: r['sms_raw'] as string | null,
+      procesado: (r['procesado'] as number) === 1,
+      notas: r['notas'] as string | null,
+      adjunto: r['adjunto'] as string | null,
+    }));
 
   const duplicados: Duplicado[] = [];
   for (let i = 0; i < txs.length; i++) {

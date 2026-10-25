@@ -1,10 +1,13 @@
 /**
  * transaccionValidator
- * Responsabilidad: Validación y merge de transacciones importadas
- * Usado por: ValidationBanner, ResultsScreen, comprobante
- * Depende de: importService
+ * Responsabilidad: Validacion y fusion no destructiva de transacciones importadas
+ * Usado por: ValidationBanner, ResultsScreen, comprobante, __tests__/transaccionValidator.test.ts
+ * Depende de: importService (tipos), dateKeys, verificacion
  */
 import type { PreviewItem } from '@/services/importService';
+import { localDateKey, storedDayKey } from './dateKeys';
+import { formatearDia } from './verificacion';
+import type { Fusion } from './verificacion';
 
 export interface ItemValidable {
   monto: number;
@@ -49,17 +52,12 @@ export interface OpcionesValidacion {
 const fmtGs = (n: number) =>
   'Gs. ' + Math.abs(Math.round(n)).toLocaleString('es-PY');
 
-const fmtFecha = (iso: string) => {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-PY');
-};
-
 function toPreviewItem(item: ItemValidable): PreviewItem {
   return { ...item, tipo: item.monto >= 0 ? 'credito' : 'debito', categoriaId: 'otros' };
 }
 
 function claveDedup(item: ItemValidable): string {
-  const fecha = item.fecha.slice(0, 10);
+  const fecha = storedDayKey(item.fecha);
   const desc = item.descripcion
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -68,56 +66,67 @@ function claveDedup(item: ItemValidable): string {
   return `${fecha}|${item.monto}|${desc}`;
 }
 
-export function mergeSplitTransactions(items: ItemValidable[]): { items: ItemValidable[]; mergedCount: number } {
-  const sorted = [...items].sort((a, b) => {
-    const d = a.fecha.slice(0, 10).localeCompare(b.fecha.slice(0, 10));
-    if (d !== 0) return d;
-    return Math.abs(a.monto) - Math.abs(b.monto);
-  });
-
-  const merged = new Set<number>();
-  let mergedCount = 0;
-
-  for (let i = 0; i < sorted.length - 1; i++) {
-    if (merged.has(i)) continue;
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (merged.has(j)) continue;
-
-      const a = sorted[i], b = sorted[j];
-      if (a.fecha.slice(0, 10) !== b.fecha.slice(0, 10)) break;
-
-      const mismoSigno = (a.monto > 0 && b.monto > 0) || (a.monto < 0 && b.monto < 0);
-      if (!mismoSigno) continue;
-
-      const absA = Math.abs(a.monto), absB = Math.abs(b.monto);
-      const concat = parseInt(`${absA}${absB}`, 10);
-      if (concat > 100_000 && concat % 1000 === 0) {
-        sorted[i] = {
-          ...a,
-          monto: a.monto + b.monto,
-          descripcion: `${a.descripcion} / ${b.descripcion}`,
-        };
-        merged.add(j);
-        mergedCount++;
-      }
-    }
-  }
-
-  const result = sorted.filter((_, i) => !merged.has(i));
-  return { items: result, mergedCount };
+function mismaFecha(a: ItemValidable, b: ItemValidable): boolean {
+  return storedDayKey(a.fecha) === storedDayKey(b.fecha);
 }
 
-function parecePartido(items: ItemValidable[]): ItemValidable[] {
+function mismoSigno(a: ItemValidable, b: ItemValidable): boolean {
+  return (a.monto > 0 && b.monto > 0) || (a.monto < 0 && b.monto < 0);
+}
+
+function parecePartido(a: ItemValidable, b: ItemValidable): boolean {
+  if (!mismaFecha(a, b) || !mismoSigno(a, b)) return false;
+  const concatenado = parseInt(`${Math.abs(a.monto)}${Math.abs(b.monto)}`, 10);
+  return concatenado > 100_000 && concatenado % 1000 === 0;
+}
+
+function ordenarPorDiaYMonto(items: ItemValidable[]): ItemValidable[] {
+  return [...items].sort((a, b) => {
+    const dia = storedDayKey(a.fecha).localeCompare(storedDayKey(b.fecha));
+    if (dia !== 0) return dia;
+    return Math.abs(a.monto) - Math.abs(b.monto);
+  });
+}
+
+export function mergeSplitTransactions(items: ItemValidable[]): {
+  items: ItemValidable[];
+  mergedCount: number;
+  fusiones: Fusion[];
+} {
+  const ordenados = ordenarPorDiaYMonto(items);
+  const fusionados = new Set<number>();
+  const resultado: ItemValidable[] = [];
+  const fusiones: Fusion[] = [];
+  let mergedCount = 0;
+
+  for (let i = 0; i < ordenados.length; i++) {
+    if (fusionados.has(i)) continue;
+    let actual = ordenados[i];
+    for (let j = i + 1; j < ordenados.length; j++) {
+      if (fusionados.has(j)) continue;
+      const candidato = ordenados[j];
+      if (!mismaFecha(actual, candidato)) break;
+      if (!parecePartido(actual, candidato)) continue;
+      const fusionada: ItemValidable = {
+        ...actual,
+        monto: actual.monto + candidato.monto,
+        descripcion: `${actual.descripcion} / ${candidato.descripcion}`,
+      };
+      fusiones.push({ fusionada, originales: [actual, candidato] });
+      actual = fusionada;
+      fusionados.add(j);
+      mergedCount++;
+    }
+    resultado.push(actual);
+  }
+
+  return { items: resultado, mergedCount, fusiones };
+}
+
+function parecePartidoSuelto(items: ItemValidable[]): ItemValidable[] {
   const sospechosos: ItemValidable[] = [];
   for (let i = 0; i < items.length - 1; i++) {
-    const a = Math.abs(items[i].monto);
-    const b = Math.abs(items[i + 1].monto);
-    const concat = parseInt(`${a}${b}`, 10);
-    if (
-      concat > 100_000 &&
-      concat % 1000 === 0 &&
-      items[i].fecha.slice(0, 10) === items[i + 1].fecha.slice(0, 10)
-    ) {
+    if (parecePartido(items[i], items[i + 1])) {
       sospechosos.push(items[i], items[i + 1]);
     }
   }
@@ -133,6 +142,7 @@ export function validarItems(
   const itemsDuplicados: PreviewItem[] = [];
   const itemsSospechosos: PreviewItem[] = [];
 
+  const leidas = items.length;
   const { items: mergedItems, mergedCount } = mergeSplitTransactions(items);
   const itemsMerged = mergedItems.filter(m =>
     !items.some(o => o.fecha === m.fecha && o.monto === m.monto && o.descripcion === m.descripcion)
@@ -163,30 +173,30 @@ export function validarItems(
   }
 
   if (totalEsperado != null) {
-    const desvio = Math.abs(mergedItems.length - totalEsperado);
+    const desvio = Math.abs(leidas - totalEsperado);
     const pct = (desvio / totalEsperado) * 100;
 
-    if (mergedItems.length > totalEsperado) {
+    if (leidas > totalEsperado) {
       const nivel: NivelWarning = pct > toleranciaCantidad ? 'warning' : 'info';
       warnings.push({
         nivel,
         codigo: 'CANTIDAD_MAYOR',
-        mensaje: `Gemini detectó ${mergedItems.length} movimientos, el PDF tiene ${totalEsperado}.`,
+        mensaje: `Gemini detectó ${leidas} movimientos, el PDF tiene ${totalEsperado}.`,
         detalle: `Diferencia de ${desvio} (${pct.toFixed(0)}%). Pueden existir filas duplicadas o partidas.`,
       });
-    } else if (mergedItems.length < totalEsperado) {
+    } else if (leidas < totalEsperado) {
       const nivel: NivelWarning = pct > toleranciaCantidad ? 'warning' : 'info';
       warnings.push({
         nivel,
         codigo: 'CANTIDAD_MENOR',
-        mensaje: `Gemini detectó ${mergedItems.length} movimientos, el PDF tiene ${totalEsperado}.`,
+        mensaje: `Gemini detectó ${leidas} movimientos, el PDF tiene ${totalEsperado}.`,
         detalle: `Faltan ${desvio} transacciones (${pct.toFixed(0)}% menos).`,
       });
     }
-  } else if (mergedItems.length > 500) {
+  } else if (leidas > 500) {
     warnings.push({
       nivel: 'warning', codigo: 'CANTIDAD_ALTA',
-      mensaje: `Se detectaron ${mergedItems.length} movimientos — cantidad inusualmente alta.`,
+      mensaje: `Se detectaron ${leidas} movimientos — cantidad inusualmente alta.`,
       detalle: 'Revisá que no haya duplicados.',
     });
   }
@@ -208,7 +218,7 @@ export function validarItems(
     });
   }
 
-  const partidos = parecePartido(mergedItems).map(toPreviewItem);
+  const partidos = parecePartidoSuelto(mergedItems).map(toPreviewItem);
   itemsSospechosos.push(...partidos);
   if (partidos.length > 0) {
     warnings.push({
@@ -227,23 +237,23 @@ export function validarItems(
     itemsSospechosos.push(...montosCero.map(toPreviewItem));
   }
 
-  const fechas = mergedItems
-    .map(i => new Date(i.fecha))
-    .filter(d => !isNaN(d.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime());
+  const dias = mergedItems
+    .map(i => storedDayKey(i.fecha))
+    .filter(dia => /^\d{4}-\d{2}-\d{2}$/.test(dia))
+    .sort();
 
   const rangoFechas =
-    fechas.length >= 2
-      ? { desde: fmtFecha(fechas[0].toISOString()), hasta: fmtFecha(fechas[fechas.length - 1].toISOString()) }
+    dias.length >= 2
+      ? { desde: formatearDia(dias[0]), hasta: formatearDia(dias[dias.length - 1]) }
       : null;
 
-  const ahora = Date.now();
-  const futuras = mergedItems.filter(i => new Date(i.fecha).getTime() > ahora + 86400_000);
+  const hoy = localDateKey();
+  const futuras = mergedItems.filter(i => storedDayKey(i.fecha) > hoy);
   if (futuras.length > 0) {
     warnings.push({
       nivel: 'info', codigo: 'FECHAS_FUTURAS',
       mensaje: `${futuras.length} movimiento${futuras.length > 1 ? 's' : ''} con fecha futura.`,
-      detalle: `Revisá: ${futuras.slice(0, 2).map(f => fmtFecha(f.fecha)).join(', ')}`,
+      detalle: `Revisá: ${futuras.slice(0, 2).map(f => formatearDia(f.fecha)).join(', ')}`,
     });
   }
 

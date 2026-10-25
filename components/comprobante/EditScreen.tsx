@@ -42,7 +42,11 @@ export default function EditScreen({ movimientos, onChange, onConfirm, onBack }:
   const [deleteTarget, setDeleteTarget] = useState<{ tempId: string; desc: string } | null>(null);
 
   const update = (tempId: string, field: keyof MovimientoDetectado, value: any) => {
-    onChange(movimientos.map(m => (m._tempId === tempId ? { ...m, [field]: value } : m)));
+    onChange(movimientos.map(m => {
+      if (m._tempId !== tempId) return m;
+      if (field === 'fecha') return { ...m, fecha: value, fechaAsumida: undefined };
+      return { ...m, [field]: value };
+    }));
   };
 
   function confirmarEliminar(tempId: string, desc: string) {
@@ -63,7 +67,7 @@ export default function EditScreen({ movimientos, onChange, onConfirm, onBack }:
         </TouchableOpacity>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '600', color: t.ink }}>Editar datos</Text>
-          <Text style={{ fontSize: 13, color: t.ink2, marginTop: 2 }}>Corregí los campos antes de procesar</Text>
+          <Text style={{ fontSize: 13, color: t.ink2, marginTop: 2 }}>Corregí los campos antes de guardar</Text>
         </View>
       </View>
 
@@ -83,7 +87,7 @@ export default function EditScreen({ movimientos, onChange, onConfirm, onBack }:
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: t.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.hairline }}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: t.accent }} onPress={onConfirm}>
           <CheckIcon color={t.onAccent} />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: t.onAccent }}>Confirmar y procesar</Text>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: t.onAccent }}>Volver a la verificación</Text>
         </TouchableOpacity>
       </View>
 
@@ -169,6 +173,9 @@ function MovItem({ mov, index, total, onUpdate, onEliminar }: { mov: MovimientoD
             <View style={{ flex: 1 }}>
               <Text style={labelStyle}>FECHA (YYYY-MM-DD)</Text>
               <TextInput style={inputStyle} value={mov.fecha} onChangeText={v => onUpdate('fecha', v)} placeholder="2026-05-29" placeholderTextColor={t.ink3} />
+              {mov.fechaAsumida === true && (
+                <Text style={{ fontSize: 11, color: t.warn, marginTop: 4 }}>El documento no traía fecha: se asumió la de hoy.</Text>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={labelStyle}>HORA (HH:MM)</Text>

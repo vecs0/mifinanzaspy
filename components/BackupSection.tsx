@@ -84,9 +84,12 @@ export function BackupSection() {
       const aviso = r.camposNoDescifrables > 0
         ? ` ${r.camposNoDescifrables} campos no se pudieron descifrar y se guardaron vacios.`
         : '';
+      const archivados = r.archivados > 0
+        ? ` ${r.archivados} movimientos archivados incluidos.`
+        : '';
       setEstado({
         tipo: 'ok',
-        texto: `Copia creada: ${r.conteos.transacciones} transacciones, ${r.conteos.cuentas} cuentas.${aviso} Guardala en un lugar seguro: sin la contraseña no se puede recuperar.`,
+        texto: `Copia creada: ${r.conteos.transacciones} transacciones, ${r.conteos.cuentas} cuentas.${archivados}${aviso} Guardala en un lugar seguro: sin la contraseña no se puede recuperar.`,
       });
     } catch (e) {
       setOcupado(false);
@@ -114,11 +117,17 @@ export function BackupSection() {
       setPass('');
       setArchivo(null);
       const tx = r.insertados.transacciones ?? 0;
+      const archivados = r.omitidosArchivados > 0
+        ? ` Ya estaban archivados: ${r.omitidosArchivados}.`
+        : '';
+      const normalizados = r.archivadoNormalizado > 0
+        ? ` Se normalizaron ${r.archivadoNormalizado} marcas de archivado.`
+        : '';
       setEstado({
         tipo: 'ok',
         texto: modo === 'reemplazar'
-          ? `Restauracion completa: ${r.despues.transacciones} transacciones, ${r.despues.cuentas} cuentas.`
-          : `Se agregaron ${tx} transacciones nuevas. Omitidos por duplicado: ${r.omitidos}.`,
+          ? `Restauracion completa: ${r.despues.transacciones} transacciones, ${r.despues.cuentas} cuentas.${normalizados}`
+          : `Se agregaron ${tx} transacciones nuevas. Omitidos por duplicado: ${r.omitidos}.${archivados}${normalizados}`,
       });
     } catch (e) {
       setOcupado(false);

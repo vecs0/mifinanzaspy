@@ -36,12 +36,11 @@ function groupByMonth(movs: MovimientoDetectado[]) {
 interface Props {
   movimientos: MovimientoDetectado[];
   totalEsperado?: number;
-  mergedCount?: number;
   onEdit: () => void;
-  onProcess: () => void;
+  onReview: () => void;
 }
 
-export default function ResultsScreen({ movimientos, totalEsperado, mergedCount, onEdit, onProcess }: Props) {
+export default function ResultsScreen({ movimientos, totalEsperado, onEdit, onReview }: Props) {
   const { dark } = useThemeCtx();
   const t = dark ? colorsDark : colors;
 
@@ -56,7 +55,7 @@ export default function ResultsScreen({ movimientos, totalEsperado, mergedCount,
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: isReport ? t.accentBg : t.positiveBg, marginBottom: 12 }}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: isReport ? t.accent : t.positive }}>
-            {isReport ? `Reporte · ${movimientos.length} movimientos${mergedCount ? ` (${mergedCount} fusionados)` : ''}` : 'Comprobante individual'}
+            {isReport ? `Reporte · ${movimientos.length} movimientos` : 'Comprobante individual'}
           </Text>
         </View>
 
@@ -122,9 +121,9 @@ export default function ResultsScreen({ movimientos, totalEsperado, mergedCount,
           <EditIcon color={t.ink} />
           <Text style={{ fontSize: 14, fontWeight: '500', color: t.ink }}>Editar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1.6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: t.accent }} onPress={onProcess}>
+        <TouchableOpacity style={{ flex: 1.6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: t.accent }} onPress={onReview}>
           <CheckIcon color={t.onAccent} />
-          <Text style={{ fontSize: 14, fontWeight: '600', color: t.onAccent }}>Procesar y guardar</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.onAccent }}>Revisar y guardar</Text>
         </TouchableOpacity>
       </View>
     </View>

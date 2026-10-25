@@ -1,7 +1,7 @@
 /**
  * dateKeys
- * Responsabilidad: Helpers puros de fechas locales (clave de dia, clave de mes, ventana de N dias, dia de fecha guardada y rango del dia en ISO UTC)
- * Usado por: app/(tabs)/index.tsx, services/database.ts, services/totales.ts, __tests__/dateKeys.test.ts
+ * Responsabilidad: Helpers puros de fechas locales (clave de dia, clave de fecha y hora, clave de mes, ventana de N dias, dia de fecha guardada y rango del dia en ISO UTC)
+ * Usado por: app/(tabs)/index.tsx, services/database.ts, services/totales.ts, services/verificacion.ts, __tests__/dateKeys.test.ts
  * Depende de: ninguno
  */
 export function localDateKey(d: Date = new Date()): string {
@@ -9,6 +9,12 @@ export function localDateKey(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+export function localDateTimeKey(d: Date = new Date()): string {
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${localDateKey(d)}T${h}:${min}`;
 }
 
 export function localMonthKey(ref: Date): string {

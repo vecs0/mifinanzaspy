@@ -2,10 +2,11 @@
  * reminders
  * Responsabilidad: CRUD y notificaciones de recordatorios
  * Usado por: index, recordatorios, _layout
- * Depende de: database, expo-notifications
+ * Depende de: database, expo-notifications, dateKeys
  */
 import { getDB } from '@/services/database';
 import { Platform } from 'react-native';
+import { localDateKey } from '@/services/dateKeys';
 
 export interface Recordatorio {
   id: string;
@@ -88,7 +89,7 @@ async function programarNotificacion(id: string, titulo: string, descripcion: st
       identifier: id,
       content: {
         title: titulo,
-        body: descripcion || 'Vencimiento próximo',
+        body: 'Tenés un vencimiento próximo. Abrí la app para verlo.',
         data: { tipo: 'recordatorio', id },
       },
       trigger,
@@ -105,7 +106,7 @@ export function getRecordatorioProximo(): Recordatorio | null {
     plus3.setDate(plus3.getDate() + 3);
     const rows = db.getAllSync<Record<string, unknown>>(
       `SELECT * FROM recordatorios WHERE activo = 1 AND fecha <= ? ORDER BY fecha ASC LIMIT 1`,
-      [plus3.toISOString().slice(0, 10)]
+      [localDateKey(plus3)]
     );
     if (!rows.length) return null;
     const r = rows[0];

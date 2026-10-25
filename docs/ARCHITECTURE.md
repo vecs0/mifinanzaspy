@@ -39,7 +39,7 @@ finanzas-py/
 │   ├── transaccion/
 │   │   ├── [id].tsx            # Detalle de transaccion
 │   │   └── settings.tsx        # Ajustes completo
-│   ├── comprobante.tsx         # Captura de comprobantes (5 pasos)
+│   ├── comprobante.tsx         # Captura de comprobantes (6 pasos, con verificacion)
 │   ├── recordatorios.tsx       # CRUD recordatorios de pagos
 │   └── ... (presupuestos, duplicados, etc.)
 ├── components/
@@ -48,7 +48,8 @@ finanzas-py/
 │   ├── HealthBar.tsx, AlertsList.tsx, BudgetProgress.tsx
 │   ├── SplashVideo.tsx, ErrorBoundary.tsx
 │   ├── CalendarPicker.tsx, CategoryManager.tsx
-│   └── comprobante/           # ResultsScreen, EditScreen, SuccessScreen, ValidationBanner
+│   ├── ArchivedSection.tsx    # Seccion "Datos archivados" de Ajustes
+│   └── comprobante/           # Pickers, ResultsScreen, VerificationScreen, EditScreen, SuccessScreen, ValidationBanner
 ├── services/
 │   ├── database.ts            # Capa SQLite (getDB lazy singleton, todas las queries)
 │   ├── ThemeContext.tsx        # Tema 3 modos (light/dark/system)
@@ -66,6 +67,9 @@ finanzas-py/
 │   ├── validation.ts          # Validacion de inputs
 │   ├── traspasoDetector.ts    # Deteccion de contrapartes
 │   ├── transaccionValidator.ts# Validacion + merge de splits
+│   ├── verificacion.ts        # Comparacion pura de la carga (cantidad, saldos, anomalias, constancia)
+│   ├── erroresIA.ts           # Los siete mensajes de error de carga (sin cuerpo crudo)
+│   ├── archivo.ts             # Reglas puras del archivado (par de traspaso, ajuste, orden, filtros)
 │   ├── duplicateDetector.ts   # Deteccion de duplicados
 │   ├── pdfReportService.ts    # Generacion PDF
 │   └── ... (budgets, metas, alerts, exchangeRate, etc.)
@@ -167,7 +171,11 @@ Usar los tokens de `theme/design-system.ts`:
 ### Tokens nuevos
 - `t.accentBg`, `t.onAccent`, `t.scrim`, `t.shadow`, `categoryPalette`, `iconStroke`, `hit`, `motion`
 - Componentes base: `PressableScale`, `Skeleton`, `EmptyState`, `InlineError`, `CaptureBar`
-- Fechas locales: `services/dateKeys.ts`
+- Fechas locales: `services/dateKeys.ts`. Las claves de calendario (`localDateKey`,
+  `localDateTimeKey`, `localMonthKey`, `storedDayKey`) son la unica fuente: alertas, reportes,
+  importacion, recordatorios, chat y detalle no derivan dia ni mes de `toISOString()`. La suite
+  fija `TZ=America/Asuncion` en `jest.config.js` para que las regresiones de fecha sean
+  deterministas.
 
 ### Tailwind classes
 NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, espaciado, y tipografia cuando sea practico:
@@ -197,7 +205,7 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 ### Convenciones SQL
 - Columnas en **snake_case** (`categoria_id`, `banco_id`, `fecha_creacion`)
 - En JS se mapea a camelCase via `AS` alias: `SELECT categoria_id AS categoriaId`
-- Schema completo en `services/database.ts:24` (funcion `inicializarDB`)
+- Schema completo en `services/database.ts` (`initSchema` para tablas nuevas, `migrate` para columnas agregadas despues)
 
 ### Tablas principales
 - `transacciones` — movimientos financieros
@@ -210,14 +218,93 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 - `notificaciones` — notificaciones locales
 - `recordatorios` — recordatorios de pagos
 - `categorias_ocultas` — categorias ocultas por el usuario
+- `reportes_cache` — reportes generados; se invalida en cada escritura de movimientos
+
+### Columnas de archivado (tabla `transacciones`)
+
+| Columna | Tipo | Regla |
+|---|---|---|
+| `archivado` | `INTEGER NOT NULL DEFAULT 0` | `1` = archivado. Se normaliza en el mapeo con `normalizarArchivado` de `services/archivo.ts` (`"1"` → 1; `0`, `2`, `NULL`, ausente → 0) |
+| `archivado_en` | `TEXT` | Clave local `AAAA-MM-DDTHH:MM` (`localDateTimeKey`). Se vuelve a `NULL` al restaurar |
+| `archivado_motivo` | `TEXT` | Reservada, hoy sin UI |
+
+- Las tres columnas entran por `migrate()` (`ALTER TABLE ... ADD COLUMN` dentro de try-catch), asi que
+  una base existente y una nueva terminan igual. El `CREATE TABLE` de `initSchema` no las lista.
+- Indice parcial: `idx_tx_archivado ON transacciones(archivado, fecha DESC) WHERE archivado = 1`.
+  Sirve a las consultas del archivo (`archivado = 1`), no a las del historial (`archivado = 0`).
+- Archivar no toca `cuentas.saldo_actual`; el borrado definitivo si lo ajusta.
+
+### Lectores que excluyen archivados
+
+`getTransacciones` agrega `archivado = 0` al `WHERE`. Las cuatro consultas de agregados
+(`getEgresosPorDia`, `getResumenMesActual`, `getGastosPorBanco`, `getNetoHoy`) traen
+`archivado AS archivado` **y** filtran `archivado = 0`: el SQL prefiltra y la regla pura
+(`esComputable` / `esVisible` de `services/totales.ts`) es la que vale. Un consumidor nuevo que
+castee filas a `FilaMovimiento` tiene que traer la columna y decidir con la funcion pura,
+nunca confiar en el SQL solo.
 
 ### Funciones clave
 - `getCuentas()` — todas las cuentas ordenadas por `orden ASC`
-- `insertTransaccion()` — inserta una transaccion
-- `getTransacciones({ limite, desde, hasta, bancoId, categoriaId })` — filtrada
+- `insertTransaccion()` — inserta una transaccion (`archivado = 0`, `archivado_en = NULL` explicitos)
+- `getTransacciones({ limite, desde, hasta, bancoId, categoriaId })` — filtrada, sin archivados
+- `getTransaccionPorId(id)` — una fila por id, archivada o no (la usa el detalle)
+- `getTransaccionesArchivadas({ cuentaId, bancoId })` — solo `archivado = 1`, con `cuentaAlias` y `cuentaActiva`
+- `existenHashes(hashes)` — deteccion de ya cargados, en tandas y devolviendo `archivado` normalizado
 - `getResumenMesActual()` — ingresos, egresos, top categorias del mes
 - `getSaldoTotal()` — suma de saldos PYG
 - `getGastosPorBanco()` — gastos agrupados por banco
+
+### Escrituras del archivo (una sola transaccion cada una)
+- `archivarTransaccion(id)` / `restaurarTransaccion(id)` — resuelven el par de traspaso y marcan
+  las filas; `cuentas.saldo_actual` queda identico
+- `restaurarTodoElArchivo()` — devuelve cuantas filas restauro
+- `borrarDefinitivoPorId(id)` / `vaciarArchivo()` — borran filas y aplican el ajuste de saldo
+  calculado por `deltaSaldoAlBorrar` / `ajustesPorCuenta`; devuelven `OperacionArchivo`
+- Todas llaman a `invalidarReportesCache()` dentro de la transaccion; `updateTransaccion` tambien
+  cuando cambia monto o fecha
+
+### Borrado definitivo: una sola puerta
+Ningun archivo de `app/` ejecuta `DELETE FROM transacciones`. El borrado definitivo entra solo por:
+
+1. `app/transaccion/[id].tsx` — "Borrar definitivamente" en el detalle de un archivado.
+2. `components/ArchivedSection.tsx` — borrado individual con `borrarDefinitivoPorId` y vaciado
+   completo con `vaciarArchivo`.
+3. `app/duplicados.tsx` — el descarte de un duplicado pasa por `borrarDefinitivoPorId`, no por un
+   `DELETE` directo.
+
+Las tres confirman monto y ajuste de saldo antes de ejecutar. `deleteTransaccion` sigue existiendo
+sin llamadores nuevos.
+
+---
+
+## Verificacion previa a guardar (carga por IA)
+
+El flujo de comprobante tiene seis pasos y el guardado vive detras del quinto:
+
+```
+picker → analyzing → results → verificacion → edit → success
+```
+
+- "Revisar y guardar" ya no guarda: arma la verificacion. Salir sin guardar no escribe nada.
+- `services/verificacion.ts` es puro (no importa React ni SQLite) y concentra la comparacion:
+  `compararCantidad`, `compararSaldos`, `calcularTotales`, `clasificarDuplicados`,
+  `detectarAnomalias`, `construirVerificacion`, `selloVerificacion`, `textoConstancia`,
+  `agregarConstancia`, `marcarFechasAsumidas`, `limpiarFechaAsumida` y `rangoFechas`.
+- La cantidad declarada se compara con las filas leidas **antes** de fusionar; `fusiones` de
+  `mergeSplitTransactions` conserva las originales y "Deshacer fusion" es reversible.
+- El estado nunca es `error`: es `guardar` o `guardar_con_observacion` (con diferencia,
+  duplicados o anomalias). Guardar con observacion agrega la constancia a `notas` sin
+  sobrescribir la nota previa.
+- Los siete mensajes de error salen de `services/erroresIA.ts` (`MENSAJES_CARGA`,
+  `clasificarHTTP`, `clasificarExcepcion`, `mensajeDeCarga`). La pantalla nunca muestra cuerpo
+  HTTP, URL ni token.
+- La fecha por defecto de un movimiento sin fecha y el sello de la constancia usan
+  `localDateKey` / `localDateTimeKey` de `services/dateKeys.ts`. No se usa `toISOString`.
+- `existenHashes` clasifica cada movimiento como nuevo, ya cargado o ya cargado y archivado
+  (este ultimo ofrece "Restaurar" en vez de insertar en silencio).
+
+La pantalla es `components/comprobante/VerificationScreen.tsx` y se monta desde
+`app/comprobante.tsx`; toda su paleta sale de `useThemeCtx()`.
 
 ---
 
@@ -253,6 +340,10 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 | validation.ts | Validacion de montos, descripciones, fechas | `services/validation.ts` |
 | traspasoDetector.ts | Deteccion de contrapartes y traspasos | `services/traspasoDetector.ts` |
 | transaccionValidator.ts | Validacion + merge de splits + duplicados | `services/transaccionValidator.ts` |
+| verificacion.ts | Comparacion pura de la carga: cantidad, saldos, anomalias, fusiones y constancia | `services/verificacion.ts` |
+| erroresIA.ts | Los siete mensajes de error de carga, sin cuerpo crudo | `services/erroresIA.ts` |
+| archivo.ts | Reglas puras del archivado: par de traspaso, ajuste de saldo, orden y filtros | `services/archivo.ts` |
+| dateKeys.ts | Claves de fecha local (`localDateKey`, `localDateTimeKey`, `storedDayKey`) | `services/dateKeys.ts` |
 
 ---
 
@@ -269,7 +360,10 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 - CRUD categorias personalizadas
 - CRUD recordatorios de pagos
 - Settings completo (perfil, cuentas reordenables, tema 3 modos, captura automatica, privacidad)
-- Comprobante (5 pasos: picker → analyzing → results → edit → success)
+- Comprobante (6 pasos: picker → analyzing → results → verificacion → edit → success)
+- Verificacion previa al guardado (cantidad, saldos, anomalias, fusiones reversibles, constancia)
+- Archivado de movimientos: archivar/restaurar desde el detalle, "Datos archivados" en Ajustes,
+  borrado definitivo con ajuste de saldo y vaciado por cuenta
 - Import CSV/PDF/OCR
 - Tema claro/oscuro/sistema (FIXED recientemente)
 - Encriptacion de datos sensibles
@@ -324,6 +418,10 @@ Siempre revisar antes de hacer commit:
 - [ ] Sin emojis en codigo (a menos que el usuario los pida)
 - [ ] Sin comentarios en codigo (salvo headers)
 - [ ] Sin variables/codigo muerto (imports sin usar, componentes no referenciados)
+- [ ] Ninguna clave de calendario sale de `toISOString()`: dia, hora y mes se arman con `services/dateKeys.ts`
+- [ ] Ningun `DELETE FROM transacciones` en `app/`: el borrado pasa por `borrarDefinitivoPorId` o `vaciarArchivo`
+- [ ] Una consulta nueva que castea a `FilaMovimiento` trae `archivado AS archivado` y filtra con `esVisible`/`esComputable`
+- [ ] Archivar o restaurar no toca `cuentas.saldo_actual`; borrar si, y en la misma transaccion
 
 ---
 

@@ -1,12 +1,15 @@
 /**
  * reportGenerator
- * Responsabilidad: Genera reportes mensuales de ingresos/egresos
+ * Responsabilidad: Genera reportes diarios, semanales y mensuales sin filas archivadas
  * Usado por: pdfReportService, reportes
- * Depende de: database, categories, banks
+ * Depende de: database, categories, banks, totales, dateKeys
  */
 import { getDB, getReporteCache, setReporteCache } from './database';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
+import { agregarMovimientos } from '@/services/totales';
+import { localDateKey, localMonthKey } from '@/services/dateKeys';
+import type { FilaAgregable } from '@/services/totales';
 
 export interface ReporteDiario {
   tipo: 'diario';
@@ -49,7 +52,7 @@ export interface ReporteMensual {
 }
 
 function isoFecha(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return localDateKey(d);
 }
 
 function nombreMesEsp(mes: string): string {
@@ -87,41 +90,37 @@ export function generarReporteDiario(fecha?: string): ReporteDiario {
     try { return JSON.parse(cached) as ReporteDiario; } catch { console.warn('[ReportGen] Cache parse error'); }
   }
 
-  const rows = db.getAllSync<{ tipo: string; monto: number; categoriaId: string }>(
-    `SELECT tipo, monto, categoria_id AS categoriaId
+  const rows = db.getAllSync<FilaAgregable>(
+    `SELECT monto AS monto, date(fecha) AS fecha, archivado AS archivado,
+            categoria_id AS categoriaId, banco_id AS bancoId
      FROM transacciones WHERE date(fecha) = ?`,
     [dia],
   );
 
-  let ingresos = 0;
-  let egresos  = 0;
-  const catMap: Record<string, number> = {};
-
-  for (const r of rows) {
-    if (r.monto > 0) ingresos += r.monto;
-    else             egresos  += Math.abs(r.monto);
-    if (r.categoriaId) catMap[r.categoriaId] = (catMap[r.categoriaId] ?? 0) + Math.abs(r.monto);
-  }
-
-  const topCatEntry = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0];
-  const topCategoria = topCatEntry
-    ? { id: topCatEntry[0], nombre: CATEGORIA_POR_ID[topCatEntry[0]]?.nombre ?? topCatEntry[0], total: topCatEntry[1] }
+  const agregado = agregarMovimientos(rows);
+  const topCategoriaRow = agregado.porCategoria[0];
+  const topCategoria = topCategoriaRow
+    ? {
+        id: topCategoriaRow.id,
+        nombre: CATEGORIA_POR_ID[topCategoriaRow.id]?.nombre ?? topCategoriaRow.id,
+        total: topCategoriaRow.total,
+      }
     : null;
 
-  const ayer = new Date(dia);
+  const ayer = new Date(`${dia}T12:00:00`);
   ayer.setDate(ayer.getDate() - 1);
   const ayerStr = isoFecha(ayer);
   const ayerRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) = ? AND monto < 0',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) = ? AND monto < 0 AND archivado = 0',
     [ayerStr],
   );
   const egresosAyer = ayerRow?.total ?? 0;
-  const comparacion = egresosAyer > 0 ? Math.round(((egresos - egresosAyer) / egresosAyer) * 100) : null;
+  const comparacion = egresosAyer > 0 ? Math.round(((agregado.egresos - egresosAyer) / egresosAyer) * 100) : null;
 
   const reporte: ReporteDiario = {
     tipo: 'diario', fecha: dia,
-    totalIngresos: ingresos, totalEgresos: egresos,
-    saldoNeto: ingresos - egresos, transacciones: rows.length,
+    totalIngresos: agregado.ingresos, totalEgresos: agregado.egresos,
+    saldoNeto: agregado.ingresos - agregado.egresos, transacciones: agregado.conteo,
     topCategoria, comparacionAyer: comparacion,
   };
 
@@ -152,49 +151,39 @@ export function generarReporteSemanal(semana?: string): ReporteSemanal {
     try { return JSON.parse(cached) as ReporteSemanal; } catch { console.warn('[ReportGen] Cache parse error'); }
   }
 
-  const rows = db.getAllSync<{ fecha: string; monto: number; categoriaId: string; bancoId: string }>(
-    `SELECT date(fecha) AS fecha, monto, categoria_id AS categoriaId, banco_id AS bancoId
+  const rows = db.getAllSync<FilaAgregable>(
+    `SELECT date(fecha) AS fecha, monto AS monto, archivado AS archivado,
+            categoria_id AS categoriaId, banco_id AS bancoId
      FROM transacciones WHERE date(fecha) BETWEEN ? AND ?`,
     [fechaInicio, fechaFin],
   );
 
-  let ingresos = 0;
-  let egresos  = 0;
-  const catMap:  Record<string, number> = {};
-  const diaMap:  Record<string, number> = {};
-  const diasSet: Set<string> = new Set();
+  const agregado = agregarMovimientos(rows);
+  const egresosPorDia = new Map(agregado.porDia.map((d) => [d.fecha, d.egreso]));
 
-  for (const r of rows) {
-    if (r.monto > 0) ingresos += r.monto;
-    else             egresos  += Math.abs(r.monto);
-    if (r.categoriaId) catMap[r.categoriaId] = (catMap[r.categoriaId] ?? 0) + Math.abs(r.monto);
-    if (r.monto < 0)   diaMap[r.fecha] = (diaMap[r.fecha] ?? 0) + Math.abs(r.monto);
-    if (r.monto !== 0) diasSet.add(r.fecha);
-  }
-
-  const topCategorias = Object.entries(catMap)
-    .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([id, total]) => ({ id, total, nombre: CATEGORIA_POR_ID[id]?.nombre ?? id }));
+  const topCategorias = agregado.porCategoria.slice(0, 5)
+    .map(({ id, total }) => ({ id, total, nombre: CATEGORIA_POR_ID[id]?.nombre ?? id }));
 
   const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   const promediosDiarios = DIAS.map((dia, i) => {
     const d = new Date(lunes); d.setDate(lunes.getDate() + i);
-    return { dia, total: diaMap[isoFecha(d)] ?? 0 };
+    return { dia, total: egresosPorDia.get(isoFecha(d)) ?? 0 };
   });
 
   const lunesAnterior = new Date(lunes); lunesAnterior.setDate(lunes.getDate() - 7);
   const domingoAnterior = new Date(lunesAnterior); domingoAnterior.setDate(lunesAnterior.getDate() + 6);
   const prevRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) BETWEEN ? AND ? AND monto < 0',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE date(fecha) BETWEEN ? AND ? AND monto < 0 AND archivado = 0',
     [isoFecha(lunesAnterior), isoFecha(domingoAnterior)],
   );
   const egresosPrev = prevRow?.total ?? 0;
-  const comparacion = egresosPrev > 0 ? Math.round(((egresos - egresosPrev) / egresosPrev) * 100) : null;
+  const comparacion = egresosPrev > 0 ? Math.round(((agregado.egresos - egresosPrev) / egresosPrev) * 100) : null;
 
   const reporte: ReporteSemanal = {
     tipo: 'semanal', semana: clave, fechaInicio, fechaFin,
-    totalIngresos: ingresos, totalEgresos: egresos, saldoNeto: ingresos - egresos,
-    diasConMovimientos: diasSet.size, topCategorias, promediosDiarios,
+    totalIngresos: agregado.ingresos, totalEgresos: agregado.egresos,
+    saldoNeto: agregado.ingresos - agregado.egresos,
+    diasConMovimientos: agregado.diasConMovimientos, topCategorias, promediosDiarios,
     comparacionSemanaAnterior: comparacion,
   };
 
@@ -204,63 +193,51 @@ export function generarReporteSemanal(semana?: string): ReporteSemanal {
 
 export function generarReporteMensual(mes?: string): ReporteMensual {
   const db  = getDB();
-  const key = mes ?? new Date().toISOString().slice(0, 7);
+  const key = mes ?? localMonthKey(new Date());
 
   const cached = getReporteCache('mensual', key);
   if (cached) {
     try { return JSON.parse(cached) as ReporteMensual; } catch { console.warn('[ReportGen] Cache parse error'); }
   }
 
-  const rows = db.getAllSync<{ fecha: string; monto: number; categoriaId: string; bancoId: string }>(
-    `SELECT date(fecha) AS fecha, monto, categoria_id AS categoriaId, banco_id AS bancoId
+  const rows = db.getAllSync<FilaAgregable>(
+    `SELECT date(fecha) AS fecha, monto AS monto, archivado AS archivado,
+            categoria_id AS categoriaId, banco_id AS bancoId
      FROM transacciones WHERE strftime('%Y-%m', fecha) = ?`,
     [key],
   );
 
-  let ingresos = 0;
-  let egresos  = 0;
-  const catMap:   Record<string, number> = {};
-  const bancoMap: Record<string, number> = {};
-  const diaMap:   Record<string, number> = {};
-  const diasSet:  Set<string> = new Set();
+  const agregado = agregarMovimientos(rows);
 
-  for (const r of rows) {
-    if (r.monto > 0) ingresos += r.monto;
-    else             egresos  += Math.abs(r.monto);
-    if (r.categoriaId) catMap[r.categoriaId]  = (catMap[r.categoriaId]  ?? 0) + Math.abs(r.monto);
-    if (r.bancoId)     bancoMap[r.bancoId]    = (bancoMap[r.bancoId]    ?? 0) + Math.abs(r.monto);
-    if (r.monto < 0)   diaMap[r.fecha]        = (diaMap[r.fecha]        ?? 0) + Math.abs(r.monto);
-    if (r.monto !== 0) diasSet.add(r.fecha);
-  }
+  const totalEgresosParaPct = agregado.egresos || 1;
+  const topCategorias = agregado.porCategoria.slice(0, 6)
+    .map(({ id, total }) => ({ id, total, nombre: CATEGORIA_POR_ID[id]?.nombre ?? id, pct: Math.round((total / totalEgresosParaPct) * 100) }));
 
-  const totalEgresosParaPct = egresos || 1;
-  const topCategorias = Object.entries(catMap)
-    .sort((a, b) => b[1] - a[1]).slice(0, 6)
-    .map(([id, total]) => ({ id, total, nombre: CATEGORIA_POR_ID[id]?.nombre ?? id, pct: Math.round((total / totalEgresosParaPct) * 100) }));
+  const topBancos = agregado.porBanco.slice(0, 4)
+    .map(({ id, total }) => ({ bancoId: id, total, nombre: BANCO_POR_ID[id]?.nombre ?? id }));
 
-  const topBancos = Object.entries(bancoMap)
-    .sort((a, b) => b[1] - a[1]).slice(0, 4)
-    .map(([bancoId, total]) => ({ bancoId, total, nombre: BANCO_POR_ID[bancoId]?.nombre ?? bancoId }));
+  const maxGastoDia = agregado.porDia.reduce<{ fecha: string; total: number } | null>(
+    (maximo, dia) => (maximo === null || dia.egreso > maximo.total ? { fecha: dia.fecha, total: dia.egreso } : maximo),
+    null,
+  );
 
-  const maxDia = Object.entries(diaMap).sort((a, b) => b[1] - a[1])[0];
-  const maxGastoDia = maxDia ? { fecha: maxDia[0], total: maxDia[1] } : null;
-
-  const diasActivos = diasSet.size;
-  const promedioGastoDiario = diasActivos > 0 ? Math.round(egresos / diasActivos) : 0;
+  const diasActivos = agregado.diasConMovimientos;
+  const promedioGastoDiario = diasActivos > 0 ? Math.round(agregado.egresos / diasActivos) : 0;
 
   const [anio, numMes] = key.split('-').map(Number);
   const mesAnteriorDate = new Date(anio, numMes - 2, 1);
-  const mesAnteriorKey  = mesAnteriorDate.toISOString().slice(0, 7);
+  const mesAnteriorKey  = localMonthKey(mesAnteriorDate);
   const prevRow = db.getFirstSync<{ total: number }>(
-    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE strftime(\'%Y-%m\', fecha) = ? AND monto < 0',
+    'SELECT COALESCE(SUM(ABS(monto)), 0) AS total FROM transacciones WHERE strftime(\'%Y-%m\', fecha) = ? AND monto < 0 AND archivado = 0',
     [mesAnteriorKey],
   );
   const egresosPrev = prevRow?.total ?? 0;
-  const comparacion = egresosPrev > 0 ? Math.round(((egresos - egresosPrev) / egresosPrev) * 100) : null;
+  const comparacion = egresosPrev > 0 ? Math.round(((agregado.egresos - egresosPrev) / egresosPrev) * 100) : null;
 
   const reporte: ReporteMensual = {
     tipo: 'mensual', mes: key, nombreMes: nombreMesEsp(key),
-    totalIngresos: ingresos, totalEgresos: egresos, saldoNeto: ingresos - egresos,
+    totalIngresos: agregado.ingresos, totalEgresos: agregado.egresos,
+    saldoNeto: agregado.ingresos - agregado.egresos,
     topCategorias, topBancos, comparacionMesAnterior: comparacion,
     diasActivos, promedioGastoDiario, maxGastoDia,
   };

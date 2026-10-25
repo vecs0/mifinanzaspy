@@ -1,3 +1,5 @@
+process.env.TZ = 'America/Asuncion';
+
 module.exports = {
   preset: 'jest-expo',
   testRegex: '__tests__[\\\\/].*\\.test\\.ts$',

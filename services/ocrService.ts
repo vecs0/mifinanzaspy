@@ -2,9 +2,10 @@
  * ocrService
  * Responsabilidad: Escaneo de comprobantes con Gemini Vision
  * Usado por: scan, comprobante
- * Depende de: apiConfig
+ * Depende de: apiConfig, erroresIA, jsonUtils
  */
 import { llamarAIProxy } from '@/services/apiConfig';
+import { clasificarExcepcion, clasificarHTTP, type CasoErrorCarga } from '@/services/erroresIA';
 import { limpiarJSON } from '@/services/jsonUtils';
 
 
@@ -17,6 +18,7 @@ export interface OcrResultado {
   tipo?: 'egreso' | 'ingreso';
   banco?: string;
   error?: string;
+  errorCarga?: CasoErrorCarga;
 }
 
 function extraerJSON(texto: string): any {
@@ -91,7 +93,11 @@ Nada de texto extra, solo el JSON.` },
     if (!resp.ok) {
       let detalle = '';
       try { const e = await resp.json(); detalle = e?.error ?? ''; } catch { console.warn('ocr: fallo al leer error de API'); }
-      return { descripcion: '', error: `Error API (${resp.status})${detalle ? ': ' + detalle : ''}` };
+      return {
+        descripcion: '',
+        error: `Error API (${resp.status})${detalle ? ': ' + detalle : ''}`,
+        errorCarga: clasificarHTTP(resp.status, detalle),
+      };
     }
 
     const data = await resp.json();
@@ -99,10 +105,16 @@ Nada de texto extra, solo el JSON.` },
     let texto = candidates[0]?.content?.parts?.[0]?.text ?? '';
     texto = PREFILL + texto;
 
-    if (!texto) return { descripcion: '', error: 'Respuesta vacía de la IA' };
+    if (!texto) return { descripcion: '', error: 'Respuesta vacía de la IA', errorCarga: 'archivo_ilegible' };
 
     const parsed = extraerJSON(texto);
-    if (!parsed) return { descripcion: texto, error: 'No se pudo estructurar el resultado' };
+    if (!parsed) {
+      return {
+        descripcion: texto,
+        error: 'No se pudo estructurar el resultado',
+        errorCarga: 'archivo_ilegible',
+      };
+    }
 
     return {
       monto:       parsed.monto       ?? undefined,
@@ -114,6 +126,6 @@ Nada de texto extra, solo el JSON.` },
       banco:       parsed.banco       ?? undefined,
     };
   } catch (e: any) {
-    return { descripcion: '', error: e?.message ?? 'Error de conexión' };
+    return { descripcion: '', error: e?.message ?? 'Error de conexión', errorCarga: clasificarExcepcion(e) };
   }
 }

@@ -395,7 +395,7 @@ export async function mejorarConIA(texto: string, hoy: Date = new Date()): Promi
     const resp = await llamarAIProxy({
       contents: [{ role: 'user', parts: [{ text: construirPromptIA(limpio, hoy) }] }],
       generationConfig: { maxOutputTokens: 1024, temperature: 0.1 },
-    }, 1);
+    }, { reintentos: 1 });
     if (!resp.ok) return { items: [], error: `Error del servicio de IA (${resp.status})` };
     const data = await resp.json();
     const salida = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';

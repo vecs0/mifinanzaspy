@@ -1,5 +1,6 @@
 import {
   localDateKey,
+  localDateTimeKey,
   localMonthKey,
   localLastDaysKeys,
   storedDayKey,
@@ -57,5 +58,12 @@ describe('dateKeys', () => {
     expect(storedDayKey('2026-10-08')).toBe('2026-10-08');
     expect(storedDayKey('2026-10-08T23:59:59')).toBe('2026-10-08');
     expect(storedDayKey('2026-10-08T02:00:00Z')).toBe('2026-10-08');
+  });
+
+  it('D5: localDateTimeKey conserva la hora local sin corrimiento', () => {
+    expect(localDateTimeKey(new Date(2026, 9, 8, 23, 5))).toBe('2026-10-08T23:05');
+    expect(localDateTimeKey(new Date(2026, 9, 8, 0, 15))).toBe('2026-10-08T00:15');
+    expect(localDateTimeKey(new Date(2026, 0, 2, 3, 4))).toBe('2026-01-02T03:04');
+    expect(localDateTimeKey(new Date(2026, 11, 31, 23, 59))).toBe('2026-12-31T23:59');
   });
 });

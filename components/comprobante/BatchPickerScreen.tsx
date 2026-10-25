@@ -23,7 +23,7 @@ import {
 import type { PreviewItem } from '@/services/importService';
 
 interface Props {
-  onResult: (items: PreviewItem[], banco?: string) => void;
+  onResult: (items: PreviewItem[], banco?: string, archivos?: BatchResult['archivos']) => void;
   onClose: () => void;
 }
 
@@ -243,7 +243,7 @@ export default function BatchPickerScreen({ onResult, onClose }: Props) {
       setEstado('error');
       return;
     }
-    onResult(result.items, result.banco);
+    onResult(result.items, result.banco, result.archivos);
   }, [archivos, onResult]);
 
   if (estado === 'seleccion') {

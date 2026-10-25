@@ -2,11 +2,13 @@
  * importService
  * Responsabilidad: Parseo CSV/PDF e importación con IA
  * Usado por: importar, comprobante, BatchPickerScreen, batchImportService, transaccionValidator
- * Depende de: database, apiConfig, expo-file-system
+ * Depende de: database, apiConfig, dateKeys, erroresIA, expo-file-system
  */
 import { File } from 'expo-file-system';
 import { insertTransaccion, getCuentas } from '@/services/database';
 import { llamarAIProxy } from '@/services/apiConfig';
+import { localDateKey, localDateTimeKey } from '@/services/dateKeys';
+import { clasificarExcepcion, clasificarHTTP, type CasoErrorCarga } from '@/services/erroresIA';
 import { limpiarJSON, findClose, extractElements } from '@/services/jsonUtils';
 
 export function extraerJSONArray(texto: string): any[] | null {
@@ -86,11 +88,26 @@ function parseCSV(text: string): string[][] {
   });
 }
 
-export async function parseCSVtoPreview(uri: string): Promise<{ items: PreviewItem[]; error?: string }> {
+function numeroEntero(valor: unknown): number | undefined {
+  if (valor == null || valor === '') return undefined;
+  const numero = typeof valor === 'number'
+    ? valor
+    : parseInt(String(valor).replace(/\./g, '').replace(/[^\d-]/g, ''), 10);
+  return Number.isFinite(numero) ? numero : undefined;
+}
+
+export async function parseCSVtoPreview(uri: string): Promise<{
+  items: PreviewItem[];
+  filasDeDatos: number;
+  filasDescartadas: number;
+  error?: string;
+}> {
   try {
     const content = await new File(uri).text();
     const rows = parseCSV(content);
-    if (rows.length < 2) return { items: [], error: 'CSV vacío o sin datos' };
+    if (rows.length < 2) {
+      return { items: [], filasDeDatos: 0, filasDescartadas: 0, error: 'CSV vacío o sin datos' };
+    }
 
     const header = rows[0].map(h => h.toLowerCase().trim());
     const fechaIdx = header.findIndex(h => h.includes('fecha') || h === 'date');
@@ -98,13 +115,21 @@ export async function parseCSVtoPreview(uri: string): Promise<{ items: PreviewIt
     const descIdx = header.findIndex(h => h.includes('descrip') || h === 'concepto' || h === 'description');
 
     if (fechaIdx === -1 || montoIdx === -1) {
-      return { items: [], error: 'Formato CSV no reconocido. Se necesitan columnas: fecha, monto, descripcion' };
+      return {
+        items: [],
+        filasDeDatos: 0,
+        filasDescartadas: 0,
+        error: 'Formato CSV no reconocido. Se necesitan columnas: fecha, monto, descripcion',
+      };
     }
 
     const items: PreviewItem[] = [];
+    let filasDeDatos = 0;
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
+      if (!row.some(celda => celda.trim() !== '')) continue;
+      filasDeDatos++;
       if (row.length < 2) continue;
 
       const fechaRaw = row[fechaIdx] ?? '';
@@ -119,7 +144,7 @@ export async function parseCSVtoPreview(uri: string): Promise<{ items: PreviewIt
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(fechaRaw)) {
         fecha = `${fechaRaw}T12:00:00`;
       } else {
-        fecha = new Date().toISOString();
+        fecha = `${localDateKey()}T12:00:00`;
       }
 
       items.push({
@@ -131,14 +156,23 @@ export async function parseCSVtoPreview(uri: string): Promise<{ items: PreviewIt
       });
     }
 
-    return { items };
+    return { items, filasDeDatos, filasDescartadas: filasDeDatos - items.length };
   } catch (e: any) {
-    return { items: [], error: e?.message ?? 'Error leyendo archivo' };
+    return {
+      items: [],
+      filasDeDatos: 0,
+      filasDescartadas: 0,
+      error: e?.message ?? 'Error leyendo archivo',
+    };
   }
 }
 
 const PREFILL_ARR = '[{"monto":';
-export async function parseOCRtoPreview(base64: string, mimeType: string): Promise<{ items: PreviewItem[]; error?: string }> {
+export async function parseOCRtoPreview(base64: string, mimeType: string): Promise<{
+  items: PreviewItem[];
+  error?: string;
+  errorCarga?: CasoErrorCarga;
+}> {
   try {
     const resp = await llamarAIProxy({
       contents: [
@@ -165,16 +199,29 @@ Ejemplo: [{"monto":-50000,"descripcion":"Supermercado","fecha":"2026-05-29"}]` }
       generationConfig: { maxOutputTokens: 1024 },
     });
 
-    if (!resp.ok) return { items: [], error: `Error API (${resp.status})` };
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      return {
+        items: [],
+        error: `Error API (${resp.status}): ${errText.slice(0, 200)}`,
+        errorCarga: clasificarHTTP(resp.status, errText),
+      };
+    }
 
     const data = await resp.json();
     const candidates = data.candidates ?? data.result?.candidates ?? [];
     let texto = candidates[0]?.content?.parts?.[0]?.text ?? '';
-    if (!texto) return { items: [], error: 'Respuesta vacía de la IA' };
+    if (!texto) return { items: [], error: 'Respuesta vacía de la IA', errorCarga: 'archivo_ilegible' };
     texto = PREFILL_ARR + texto;
 
     let parsed = extraerJSONArray(texto);
-    if (!parsed) return { items: [], error: `No se pudo interpretar: ${texto.slice(0, 300)}` };
+    if (!parsed) {
+      return {
+        items: [],
+        error: `No se pudo interpretar: ${texto.slice(0, 300)}`,
+        errorCarga: 'archivo_ilegible',
+      };
+    }
 
     if (!Array.isArray(parsed)) parsed = [parsed];
 
@@ -184,19 +231,27 @@ Ejemplo: [{"monto":-50000,"descripcion":"Supermercado","fecha":"2026-05-29"}]` }
         monto: p.monto,
         tipo: p.monto < 0 ? 'debito' : 'credito',
         descripcion: p.descripcion ?? '',
-        fecha: p.fecha ?? new Date().toISOString().slice(0, 10),
+        fecha: p.fecha ?? localDateKey(),
         categoriaId: 'otros',
       }));
 
-    if (items.length === 0) return { items: [], error: 'No se encontraron transacciones en el documento' };
+    if (items.length === 0) return { items: [] };
 
     return { items };
   } catch (e: any) {
-    return { items: [], error: e?.message ?? 'Error procesando documento' };
+    return { items: [], error: e?.message ?? 'Error procesando documento', errorCarga: clasificarExcepcion(e) };
   }
 }
 
-export async function analizarPDF(base64: string, mimeType: string): Promise<{ items: PreviewItem[]; error?: string; banco?: string; totalEsperado?: number }> {
+export async function analizarPDF(base64: string, mimeType: string): Promise<{
+  items: PreviewItem[];
+  banco?: string;
+  totalEsperado?: number;
+  saldoInicial?: number;
+  saldoFinal?: number;
+  error?: string;
+  errorCarga?: CasoErrorCarga;
+}> {
   try {
     const resp = await llamarAIProxy({
       contents: [
@@ -211,9 +266,15 @@ Primero identificá el banco (Ueno, Itaú, Continental, Familiar, Regional, Mang
 Respondé SOLO con un array JSON válido. Sin texto, sin markdown, sin bloques de código.
 
 Estructura del array:
-- El PRIMER elemento es metadata: {"banco":"NombreDelBanco","total":N}
+- El PRIMER elemento es metadata: {"banco":"NombreDelBanco","total":N,"saldoInicial":N,"saldoFinal":N}
 - Los siguientes son transacciones en formato de 5 elementos:
   ["YYYY-MM-DD","descripcion completa",monto,"banco_contraparte_o_null","nombre_contraparte_o_null"]
+
+REGLAS de la metadata:
+- "total": la cantidad de transacciones que tiene el extracto
+- "saldoInicial": el saldo inicial que imprime el extracto, entero en guaraníes (sin puntos, sin decimales)
+- "saldoFinal": el saldo final que imprime el extracto, entero en guaraníes (sin puntos, sin decimales)
+- Si el extracto no muestra saldo inicial o saldo final, omití ese campo: no lo inventes
 
 REGLAS por campo:
 - Campo [0] Fecha: convertir DD/MM/AAAA HH:MM → "YYYY-MM-DDTHH:MM" (incluir hora si existe). Si no hay hora → "YYYY-MM-DD"
@@ -225,12 +286,12 @@ REGLAS por campo:
 - Campo [4] Nombre contraparte: si hay nombre de persona o empresa en la descripción → extraerlo.
   Ej: "Antonia Ramirez", "SUPERMERCADO DON BETO", "Clara Sosa"
   Si no hay nombre → null
-- NO incluyas la columna Saldo
-- NO incluyas encabezados, pies de página, ni el saldo final/inicial
+- La columna Saldo NO va en las filas: el saldo inicial y el saldo final van solo en la metadata
+- NO incluyas encabezados ni pies de página en las filas
 - Array vacío [] si no hay datos
 
 EJEMPLO:
-[{"banco":"Ueno","total":3},["2026-05-12T14:32","Tigo Pago de Facturas",-97000,null,null],["2026-05-12T09:15","Transferencia Recibida de Clara Sosa",97000,"itau","Clara Sosa"],["2026-05-12T11:05","Transferencia Enviada a Antonia Ramirez",-90000,"itau","Antonia Ramirez"]]`,
+[{"banco":"Ueno","total":3,"saldoInicial":150000,"saldoFinal":80000},["2026-05-12T14:32","Tigo Pago de Facturas",-97000,null,null],["2026-05-12T09:15","Transferencia Recibida de Clara Sosa",97000,"itau","Clara Sosa"],["2026-05-12T11:05","Transferencia Enviada a Antonia Ramirez",-90000,"itau","Antonia Ramirez"]]`,
             },
             { inlineData: { mimeType, data: base64 } },
           ],
@@ -244,7 +305,11 @@ EJEMPLO:
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      return { items: [], error: `Error API (${resp.status}): ${errText.slice(0, 200)}` };
+      return {
+        items: [],
+        error: `Error API (${resp.status}): ${errText.slice(0, 200)}`,
+        errorCarga: clasificarHTTP(resp.status, errText),
+      };
     }
 
     const data = await resp.json();
@@ -256,21 +321,34 @@ EJEMPLO:
       console.log('=== GEMINI RAW FIN ===', texto.slice(-500));
     }
 
-    if (!texto) return { items: [], error: 'Respuesta vacía de Gemini' };
+    if (!texto) return { items: [], error: 'Respuesta vacía de Gemini', errorCarga: 'pdf_protegido' };
 
     let parsed = extraerJSONArray(texto);
     if (__DEV__) console.log('=== PARSED COUNT ===', parsed?.length);
 
     if (!parsed) {
-      return { items: [], error: `No se pudo interpretar la respuesta: ${texto.slice(0, 300)}` };
+      return {
+        items: [],
+        error: `No se pudo interpretar la respuesta: ${texto.slice(0, 300)}`,
+        errorCarga: 'archivo_ilegible',
+      };
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
 
     let bancoDetectado: string | undefined;
     let totalEsperado: number | undefined;
-    if (parsed.length > 0 && !Array.isArray(parsed[0]) && parsed[0]?.banco) {
-      bancoDetectado = String(parsed[0].banco);
-      totalEsperado = typeof parsed[0].total === 'number' ? parsed[0].total : undefined;
+    let saldoInicial: number | undefined;
+    let saldoFinal: number | undefined;
+    const primero = parsed[0];
+    const esMetadata = primero !== null
+      && typeof primero === 'object'
+      && !Array.isArray(primero)
+      && ('banco' in primero || 'total' in primero || 'saldoInicial' in primero || 'saldo_inicial' in primero);
+    if (esMetadata) {
+      bancoDetectado = primero.banco != null ? String(primero.banco) : undefined;
+      totalEsperado = numeroEntero(primero.total);
+      saldoInicial = numeroEntero(primero.saldoInicial ?? primero.saldo_inicial);
+      saldoFinal = numeroEntero(primero.saldoFinal ?? primero.saldo_final);
       parsed = parsed.slice(1);
     }
 
@@ -317,12 +395,12 @@ EJEMPLO:
       });
 
     if (items.length === 0) {
-      return { items: [], error: 'No se encontraron transacciones en el extracto' };
+      return { items: [] };
     }
 
-    return { items, banco: bancoDetectado, totalEsperado };
+    return { items, banco: bancoDetectado, totalEsperado, saldoInicial, saldoFinal };
   } catch (e: any) {
-    return { items: [], error: e?.message ?? 'Error procesando PDF' };
+    return { items: [], error: e?.message ?? 'Error procesando PDF', errorCarga: clasificarExcepcion(e) };
   }
 }
 
@@ -395,7 +473,7 @@ export async function importarCSV(uri: string): Promise<ResultadoImportacion> {
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(fechaRaw)) {
           fecha = `${fechaRaw}T12:00:00`;
         } else {
-          fecha = new Date().toISOString();
+          fecha = localDateTimeKey();
         }
 
         await insertTransaccion({
@@ -444,7 +522,7 @@ export async function importarDesdeClipboard(texto: string): Promise<ResultadoIm
           cuentaId, bancoId, monto,
           tipo: monto < 0 ? 'debito' : 'credito',
           categoriaId: 'otros', descripcion: row.slice(0, -1).join(' ').trim(),
-          fuente: 'manual', fecha: new Date().toISOString(),
+          fuente: 'manual', fecha: localDateTimeKey(),
           saldoPost: null, smsRaw: null, procesado: false, notas: null, adjunto: null,
         });
         result.ok++;

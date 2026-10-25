@@ -2,8 +2,10 @@
  * validation
  * Responsabilidad: Validación de monto, descripción, fecha y nombre
  * Usado por: importar
- * Depende de: (ninguna, standalone)
+ * Depende de: dateKeys
  */
+import { localDateKey } from '@/services/dateKeys';
+
 const MAX_MONTO = 100_000_000;
 const MAX_DESC = 200;
 const MAX_NOMBRE = 60;
@@ -23,9 +25,9 @@ export function validarNombre(raw: string): string {
 }
 
 export function validarFecha(raw: unknown): string {
-  if (typeof raw !== 'string') return new Date().toISOString().slice(0, 10);
+  if (typeof raw !== 'string') return localDateKey();
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return new Date().toISOString().slice(0, 10);
+  if (!match) return localDateKey();
   const y = match[1], m = match[2], d = match[3];
   return `${y}-${m}-${d}`;
 }

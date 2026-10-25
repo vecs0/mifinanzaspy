@@ -1,7 +1,7 @@
 /**
  * totales
- * Responsabilidad: Funciones puras de agregacion de movimientos (resumen del mes sin traspasos)
- * Usado por: __tests__/totales.test.ts
+ * Responsabilidad: Funciones puras de agregacion de movimientos (predicados de visibilidad y agregados sin archivados)
+ * Usado por: services/database.ts, services/alerts.ts, services/budgets.ts, services/reportGenerator.ts, __tests__/totales.test.ts
  * Depende de: services/dateKeys.ts
  */
 import { localDateKey, localLastDaysKeys, storedDayKey } from './dateKeys';
@@ -10,9 +10,18 @@ export type FilaMovimiento = {
   monto: number;
   fecha: string;
   esTraspaso: number | null;
+  archivado: number | null;
   bancoId: string | null;
   categoriaId: string | null;
   categoriaNombre: string | null;
+};
+
+export type FilaAgregable = {
+  monto: number;
+  fecha: string;
+  archivado: number | null;
+  categoriaId: string | null;
+  bancoId: string | null;
 };
 
 export type ResumenMes = {
@@ -27,8 +36,112 @@ export type EgresoDia = { fecha: string; total: number };
 
 export type BarraDia = { key: string; dia: string; total: number; esHoy: boolean };
 
-export function esComputable(fila: Pick<FilaMovimiento, 'esTraspaso'>): boolean {
-  return fila.esTraspaso !== 1;
+export type AgregadoMovimientos = {
+  ingresos: number;
+  egresos: number;
+  conteo: number;
+  porCategoria: { id: string; total: number }[];
+  porBanco: { id: string; total: number }[];
+  porDia: { fecha: string; egreso: number }[];
+  diasConMovimientos: number;
+};
+
+export function esComputable(
+  fila: Pick<FilaMovimiento, 'esTraspaso'> & { archivado?: number | null }
+): boolean {
+  return fila.esTraspaso !== 1 && (fila.archivado ?? 0) !== 1;
+}
+
+export function esVisible(fila: { archivado?: number | null }): boolean {
+  return (fila.archivado ?? 0) !== 1;
+}
+
+function compararTotales(a: { total: number }, b: { total: number }, idA: string, idB: string): number {
+  if (b.total !== a.total) return b.total - a.total;
+  return idA < idB ? -1 : idA > idB ? 1 : 0;
+}
+
+export function gastosPorCategoria(
+  filas: FilaAgregable[]
+): { categoriaId: string; total: number }[] {
+  const porCategoria = new Map<string, number>();
+  for (const f of filas) {
+    if (!esVisible(f) || f.monto >= 0 || !f.categoriaId) continue;
+    porCategoria.set(f.categoriaId, (porCategoria.get(f.categoriaId) ?? 0) + -f.monto);
+  }
+  return Array.from(porCategoria, ([categoriaId, total]) => ({ categoriaId, total })).sort((a, b) =>
+    compararTotales(a, b, a.categoriaId, b.categoriaId)
+  );
+}
+
+export function gastosPorCategoriaMes(
+  filas: FilaAgregable[]
+): { categoriaId: string; mes: string; total: number }[] {
+  const porMesCategoria = new Map<string, { categoriaId: string; mes: string; total: number }>();
+  for (const f of filas) {
+    if (!esVisible(f) || f.monto >= 0 || !f.categoriaId) continue;
+    const mes = storedDayKey(f.fecha).slice(0, 7);
+    const clave = `${mes}|${f.categoriaId}`;
+    const actual = porMesCategoria.get(clave);
+    if (actual) actual.total += -f.monto;
+    else porMesCategoria.set(clave, { categoriaId: f.categoriaId, mes, total: -f.monto });
+  }
+  return Array.from(porMesCategoria.values()).sort(
+    (a, b) =>
+      (a.mes < b.mes ? -1 : a.mes > b.mes ? 1 : 0) ||
+      compararTotales(a, b, a.categoriaId, b.categoriaId)
+  );
+}
+
+export function totalEgresos(filas: FilaAgregable[]): number {
+  let total = 0;
+  for (const f of filas) {
+    if (!esVisible(f) || f.monto >= 0) continue;
+    total += -f.monto;
+  }
+  return total;
+}
+
+export function agregarMovimientos(filas: FilaAgregable[]): AgregadoMovimientos {
+  let ingresos = 0;
+  let egresos = 0;
+  let conteo = 0;
+  const porCategoria = new Map<string, number>();
+  const porBanco = new Map<string, number>();
+  const porDia = new Map<string, number>();
+  const dias = new Set<string>();
+  for (const f of filas) {
+    if (!esVisible(f)) continue;
+    conteo++;
+    if (f.monto > 0) ingresos += f.monto;
+    else if (f.monto < 0) egresos += -f.monto;
+    if (f.categoriaId) {
+      porCategoria.set(f.categoriaId, (porCategoria.get(f.categoriaId) ?? 0) + Math.abs(f.monto));
+    }
+    if (f.bancoId) {
+      porBanco.set(f.bancoId, (porBanco.get(f.bancoId) ?? 0) + Math.abs(f.monto));
+    }
+    if (f.monto !== 0) {
+      const dia = storedDayKey(f.fecha);
+      dias.add(dia);
+      if (f.monto < 0) porDia.set(dia, (porDia.get(dia) ?? 0) + -f.monto);
+    }
+  }
+  return {
+    ingresos,
+    egresos,
+    conteo,
+    porCategoria: Array.from(porCategoria, ([id, total]) => ({ id, total })).sort((a, b) =>
+      compararTotales(a, b, a.id, b.id)
+    ),
+    porBanco: Array.from(porBanco, ([id, total]) => ({ id, total })).sort((a, b) =>
+      compararTotales(a, b, a.id, b.id)
+    ),
+    porDia: Array.from(porDia, ([fecha, egreso]) => ({ fecha, egreso })).sort((a, b) =>
+      a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0
+    ),
+    diasConMovimientos: dias.size,
+  };
 }
 
 export function calcularResumenMes(

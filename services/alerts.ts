@@ -1,11 +1,14 @@
 /**
  * alerts
- * Responsabilidad: Genera alertas inteligentes de gastos y presupuestos
+ * Responsabilidad: Genera alertas inteligentes de gastos y presupuestos sin filas archivadas
  * Usado por: components/AlertsList
- * Depende de: database, categories
+ * Depende de: database, categories, totales, dateKeys
  */
 import { getDB } from '@/services/database';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
+import { gastosPorCategoriaMes } from '@/services/totales';
+import { localMonthKey } from '@/services/dateKeys';
+import type { FilaAgregable } from '@/services/totales';
 
 export interface AlertaInteligente {
   tipo: 'gasto_creciente' | 'presupuesto_cerca' | 'presupuesto_excedido' | 'saldo_bajo';
@@ -17,27 +20,24 @@ export interface AlertaInteligente {
 export function generarAlertas(): AlertaInteligente[] {
   const alertas: AlertaInteligente[] = [];
   const ahora = new Date();
-  const mesActual = ahora.toISOString().slice(0, 7);
-  const anio = ahora.getFullYear();
-  const mesNum = ahora.getMonth() + 1;
-  const mesAnterior = mesNum === 1
-    ? `${anio - 1}-12`
-    : `${anio}-${String(mesNum - 1).padStart(2, '0')}`;
+  const mesActual = localMonthKey(ahora);
+  const mesAnterior = localMonthKey(new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1));
 
   const db = getDB();
 
-  const gastos = db.getAllSync<{ categoria_id: string; total: number; mes: string }>(
-    `SELECT categoria_id, SUM(ABS(monto)) AS total, substr(fecha,1,7) AS mes
-     FROM transacciones WHERE monto < 0 AND substr(fecha,1,7) IN (?, ?)
-     GROUP BY categoria_id, mes`,
+  const gastos = db.getAllSync<FilaAgregable>(
+    `SELECT monto AS monto, fecha AS fecha, archivado AS archivado,
+            categoria_id AS categoriaId, banco_id AS bancoId
+     FROM transacciones
+     WHERE monto < 0 AND substr(fecha,1,7) IN (?, ?)`,
     [mesActual, mesAnterior]
   );
 
   const actual: Record<string, number> = {};
   const anterior: Record<string, number> = {};
-  for (const g of gastos) {
-    if (g.mes === mesActual) actual[g.categoria_id] = g.total;
-    else anterior[g.categoria_id] = g.total;
+  for (const g of gastosPorCategoriaMes(gastos)) {
+    if (g.mes === mesActual) actual[g.categoriaId] = g.total;
+    else anterior[g.categoriaId] = g.total;
   }
 
   for (const [catId, gastoAct] of Object.entries(actual)) {

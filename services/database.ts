@@ -2,14 +2,16 @@
  * database
  * Responsabilidad: Capa de acceso a SQLite (sync API) con Expo SQLite
  * Usado por: toda la app (~29 imports)
- * Depende de: encryption, categories, dateKeys, totales
- * Migraciones: cuentas duplicadas, orden col, adjunto, traspasos, categorias_ocultas, chat_cache session_id
+ * Depende de: encryption, categories, dateKeys, totales, archivo
+ * Migraciones: cuentas duplicadas, orden col, adjunto, traspasos, categorias_ocultas, chat_cache session_id, archivo (archivado, archivado_en, archivado_motivo)
  */
 import * as SQLite from 'expo-sqlite';
 import { CATEGORIAS } from '@/constants/categories';
 import nacl from 'tweetnacl';
-import { encrypt, decrypt } from '@/services/encryption';
-import { localDateKey, localMonthKey, localLastDaysKeys } from '@/services/dateKeys';
+import { encrypt, decrypt, encriptarCampo, desencriptarCampo } from '@/services/encryption';
+import { localDateKey, localMonthKey, localLastDaysKeys, localDateTimeKey, storedDayKey } from '@/services/dateKeys';
+import { agruparOperaciones, ajustesPorCuenta, normalizarArchivado, ordenarArchivo, resolverOperacion } from '@/services/archivo';
+import type { AjusteCuenta, FilaArchivo, OperacionArchivo } from '@/services/archivo';
 import {
   calcularResumenMes, calcularGastosPorBanco, calcularEgresosPorDia, calcularNetoDia,
 } from '@/services/totales';
@@ -60,6 +62,10 @@ function migrate(database: SQLite.SQLiteDatabase): void {
   try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_cuenta_par ON transacciones(cuenta_par_id) WHERE cuenta_par_id IS NOT NULL"); } catch (_) { console.warn('[DB] Migration: idx_cuenta_par index'); }
   try { database.execSync("ALTER TABLE transacciones ADD COLUMN hash_verificacion TEXT"); } catch (_) { console.warn('[DB] Migration: hash_verificacion column'); }
   try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_hash ON transacciones(hash_verificacion) WHERE hash_verificacion IS NOT NULL"); } catch (_) { console.warn('[DB] Migration: idx_hash index'); }
+  try { database.execSync("ALTER TABLE transacciones ADD COLUMN archivado INTEGER NOT NULL DEFAULT 0"); } catch (_) { console.warn('[DB] Migration: archivado column'); }
+  try { database.execSync("ALTER TABLE transacciones ADD COLUMN archivado_en TEXT"); } catch (_) { console.warn('[DB] Migration: archivado_en column'); }
+  try { database.execSync("ALTER TABLE transacciones ADD COLUMN archivado_motivo TEXT"); } catch (_) { console.warn('[DB] Migration: archivado_motivo column'); }
+  try { database.execSync("CREATE INDEX IF NOT EXISTS idx_tx_archivado ON transacciones(archivado, fecha DESC) WHERE archivado = 1"); } catch (_) { console.warn('[DB] Migration: idx_archivado index'); }
   try { database.execSync('CREATE TABLE IF NOT EXISTS categorias_ocultas (id TEXT PRIMARY KEY)'); } catch (_) { console.warn('[DB] Migration: categorias_ocultas table'); }
   try { database.execSync('ALTER TABLE chat_cache ADD COLUMN session_id TEXT'); } catch (_) { console.warn('[DB] Migration: chat_cache session_id column'); }
 }
@@ -144,7 +150,28 @@ function mapTransaccion(r: Record<string, unknown>): Transaccion {
     cuentaParId:        r['cuenta_par_id'] as string | null,
     contraparteBancoId: r['contraparte_banco_id'] as string | null,
     contraparteNombre:  r['contraparte_nombre'] as string | null,
+    archivado:          normalizarArchivado(r['archivado']),
+    archivadoEn:        r['archivado_en'] as string | null,
+    archivadoMotivo:    r['archivado_motivo'] as string | null,
   };
+}
+
+export type TransaccionArchivada = Omit<
+  Transaccion,
+  'esTraspaso' | 'cuentaParId' | 'archivado' | 'archivadoEn' | 'archivadoMotivo'
+> & {
+  esTraspaso: number;
+  cuentaParId: string | null;
+  archivado: number;
+  archivadoEn: string | null;
+  archivadoMotivo: string | null;
+  cuentaAlias: string;
+  cuentaActiva: boolean;
+};
+
+function ordenarArchivadas<T extends FilaArchivo>(filas: T[]): T[] {
+  const posicion = new Map(ordenarArchivo(filas).map((fila, indice) => [fila.id, indice]));
+  return [...filas].sort((a, b) => (posicion.get(a.id) ?? 0) - (posicion.get(b.id) ?? 0));
 }
 
 export function getCuentas(): CuentaBancaria[] {
@@ -198,7 +225,7 @@ export async function getTransacciones(opciones: {
   desde?: string; hasta?: string; limite?: number; offset?: number;
 } = {}): Promise<Transaccion[]> {
   const db = getDB();
-  const condiciones: string[] = [];
+  const condiciones: string[] = ['archivado = 0'];
   const params: (string | number)[] = [];
 
   if (opciones.cuentaId)    { condiciones.push('cuenta_id = ?');    params.push(opciones.cuentaId); }
@@ -233,7 +260,52 @@ async function descifrarSeguro(valor: string | null): Promise<string | null> {
   }
 }
 
-const FUENTES_AUTOMATICAS = new Set(['sms', 'notificacion', 'csv', 'email']);
+export async function getTransaccionPorId(id: string): Promise<Transaccion | null> {
+  const row = getDB().getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM transacciones WHERE id = ?',
+    [id]
+  );
+  if (!row) return null;
+  const t = mapTransaccion(row);
+  t.smsRaw = await descifrarSeguro(t.smsRaw);
+  t.descripcion = (await descifrarSeguro(t.descripcion)) ?? '';
+  return t;
+}
+
+export async function getTransaccionesArchivadas(
+  filtros: { cuentaId?: string; bancoId?: string } = {}
+): Promise<TransaccionArchivada[]> {
+  const db = getDB();
+  const condiciones: string[] = ['archivado = 1'];
+  const params: (string | number)[] = [];
+  if (filtros.cuentaId) { condiciones.push('cuenta_id = ?'); params.push(filtros.cuentaId); }
+  if (filtros.bancoId)  { condiciones.push('banco_id = ?');  params.push(filtros.bancoId); }
+
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM transacciones WHERE ${condiciones.join(' AND ')}`,
+    params
+  );
+  const cuentas = db.getAllSync<Record<string, unknown>>('SELECT * FROM cuentas');
+  const archivadas = await Promise.all(rows.map(async r => {
+    const t = mapTransaccion(r);
+    t.smsRaw = await descifrarSeguro(t.smsRaw);
+    t.descripcion = (await descifrarSeguro(t.descripcion)) ?? '';
+    const cuenta = cuentas.find(c => c['id'] === t.cuentaId);
+    return {
+      ...t,
+      esTraspaso: t.esTraspaso ?? 0,
+      cuentaParId: t.cuentaParId ?? null,
+      archivado: normalizarArchivado(r['archivado']),
+      archivadoEn: (r['archivado_en'] as string | null) ?? null,
+      archivadoMotivo: (r['archivado_motivo'] as string | null) ?? null,
+      cuentaAlias: cuenta ? (cuenta['alias'] as string) : t.cuentaId,
+      cuentaActiva: cuenta ? (cuenta['activa'] as number) === 1 : false,
+    };
+  }));
+  return ordenarArchivadas(archivadas);
+}
+
+const FUENTES_AUTOMATICAS = new Set(['sms', 'notificacion', 'csv', 'email', 'pdf', 'foto']);
 
 export function calcularHashTransaccion(tx: Pick<Transaccion, 'cuentaId' | 'monto' | 'fecha' | 'descripcion' | 'smsRaw'>): string {
   const base = [tx.cuentaId, tx.monto, tx.fecha.slice(0, 10), (tx.smsRaw || tx.descripcion || '').trim().toLowerCase()].join('|');
@@ -247,6 +319,28 @@ export function existeTransaccionPorHash(hash: string): boolean {
     [hash]
   );
   return !!row;
+}
+
+const TANDA_HASHES = 400;
+
+export function existenHashes(hashes: string[]): { hash: string; id: string; archivado: number }[] {
+  const db = getDB();
+  const encontrados: { hash: string; id: string; archivado: number }[] = [];
+  for (let i = 0; i < hashes.length; i += TANDA_HASHES) {
+    const tanda = hashes.slice(i, i + TANDA_HASHES);
+    const rows = db.getAllSync<Record<string, unknown>>(
+      `SELECT * FROM transacciones WHERE hash_verificacion IN (${marcadores(tanda.length)})`,
+      tanda
+    );
+    for (const row of rows) {
+      encontrados.push({
+        hash: row['hash_verificacion'] as string,
+        id: row['id'] as string,
+        archivado: normalizarArchivado(row['archivado']),
+      });
+    }
+  }
+  return encontrados;
 }
 
 function asegurarCuentaEfectivo(db: SQLite.SQLiteDatabase): void {
@@ -277,8 +371,9 @@ export async function insertTransaccion(tx: Omit<Transaccion, 'id'>): Promise<Tr
     `INSERT INTO transacciones
       (id, cuenta_id, banco_id, monto, tipo, categoria_id, descripcion,
        fuente, fecha, saldo_post, sms_raw, procesado, notas, adjunto,
-       es_traspaso, cuenta_par_id, contraparte_banco_id, contraparte_nombre, hash_verificacion)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       es_traspaso, cuenta_par_id, contraparte_banco_id, contraparte_nombre, hash_verificacion,
+       archivado, archivado_en)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, tx.cuentaId, tx.bancoId, tx.monto, tx.tipo, tx.categoriaId,
       descCifrada ?? '', tx.fuente, tx.fecha,
@@ -288,6 +383,7 @@ export async function insertTransaccion(tx: Omit<Transaccion, 'id'>): Promise<Tr
       tx.esTraspaso ?? 0, tx.cuentaParId ?? null,
       tx.contraparteBancoId ?? null, tx.contraparteNombre ?? null,
       hash,
+      0, null,
     ]
   );
   db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [tx.monto, tx.cuentaId]);
@@ -303,40 +399,168 @@ export function updateCategoria(txId: string, categoriaId: string): void {
 
 export async function updateTransaccion(txId: string, data: { descripcion?: string; monto?: number; fecha?: string }): Promise<void> {
   const db = getDB();
-  const existing = db.getFirstSync<{ monto: number; cuenta_id: string }>(
-    'SELECT monto, cuenta_id FROM transacciones WHERE id = ?',
+  const existing = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM transacciones WHERE id = ?',
     [txId]
   );
   if (!existing) return;
 
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number | null)[] = [];
+  let diferencia = 0;
   if (data.descripcion !== undefined) {
     const descCifrada = await encrypt(data.descripcion);
     sets.push('descripcion = ?');
     vals.push(descCifrada ?? '');
   }
   if (data.monto !== undefined) {
+    diferencia = data.monto - (existing['monto'] as number);
     sets.push('monto = ?');
     vals.push(data.monto);
-    const diff = data.monto - existing.monto;
-    if (diff !== 0) {
-      db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [diff, existing.cuenta_id]);
-    }
   }
   if (data.fecha !== undefined) {
     sets.push('fecha = ?');
     vals.push(data.fecha);
   }
   if (sets.length === 0) return;
+  const cambiaFlujos = data.monto !== undefined || data.fecha !== undefined;
   vals.push(txId);
-  db.runSync(`UPDATE transacciones SET ${sets.join(', ')} WHERE id = ?`, vals);
+  db.withTransactionSync(() => {
+    if (diferencia !== 0) {
+      db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [diferencia, existing['cuenta_id'] as string]);
+    }
+    db.runSync(`UPDATE transacciones SET ${sets.join(', ')} WHERE id = ?`, vals);
+    if (cambiaFlujos) invalidarReportesCache();
+  });
 }
 
 export function deleteTransaccion(txId: string, monto: number, cuentaId: string): void {
   const db = getDB();
   db.runSync('DELETE FROM transacciones WHERE id = ?', [txId]);
   db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?', [monto, cuentaId]);
+}
+
+function marcadores(cantidad: number): string {
+  return Array.from({ length: cantidad }, () => '?').join(', ');
+}
+
+function filaArchivoDe(r: Record<string, unknown>): FilaArchivo {
+  return {
+    id: r['id'] as string,
+    cuentaId: r['cuenta_id'] as string,
+    bancoId: r['banco_id'] as string,
+    monto: r['monto'] as number,
+    fecha: r['fecha'] as string,
+    descripcion: (r['descripcion'] as string | null) ?? '',
+    esTraspaso: (r['es_traspaso'] as number | null) ?? null,
+    cuentaParId: (r['cuenta_par_id'] as string | null) ?? null,
+    archivado: normalizarArchivado(r['archivado']),
+    archivadoEn: (r['archivado_en'] as string | null) ?? null,
+  };
+}
+
+function operacionVacia(): OperacionArchivo {
+  return { ids: [], traspaso: false, ambiguo: false, ajustes: [] };
+}
+
+function operacionDesdeId(db: SQLite.SQLiteDatabase, id: string): OperacionArchivo | null {
+  const row = db.getFirstSync<Record<string, unknown>>('SELECT * FROM transacciones WHERE id = ?', [id]);
+  if (!row) return null;
+  const fila = filaArchivoDe(row);
+  const candidatas = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM transacciones WHERE es_traspaso = 1 AND monto = ? AND substr(fecha, 1, 10) = ?',
+    [0 - fila.monto, storedDayKey(fila.fecha)]
+  ).map(filaArchivoDe);
+  return resolverOperacion(fila, candidatas);
+}
+
+function marcarArchivado(
+  db: SQLite.SQLiteDatabase,
+  ids: string[],
+  archivado: 0 | 1,
+  archivadoEn: string | null
+): void {
+  if (ids.length === 0) return;
+  db.runSync(
+    `UPDATE transacciones SET archivado = ?, archivado_en = ? WHERE id IN (${marcadores(ids.length)})`,
+    [archivado, archivadoEn, ...ids]
+  );
+}
+
+function aplicarAjustes(db: SQLite.SQLiteDatabase, ajustes: AjusteCuenta[]): void {
+  for (const ajuste of ajustes) {
+    db.runSync('UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?', [ajuste.delta, ajuste.cuentaId]);
+  }
+}
+
+export function archivarTransaccion(id: string): OperacionArchivo {
+  const db = getDB();
+  let operacion = operacionVacia();
+  db.withTransactionSync(() => {
+    const resuelta = operacionDesdeId(db, id);
+    if (!resuelta) return;
+    marcarArchivado(db, resuelta.ids, 1, localDateTimeKey());
+    invalidarReportesCache();
+    operacion = { ...resuelta, ajustes: [] };
+  });
+  return operacion;
+}
+
+export function restaurarTransaccion(id: string): OperacionArchivo {
+  const db = getDB();
+  let operacion = operacionVacia();
+  db.withTransactionSync(() => {
+    const resuelta = operacionDesdeId(db, id);
+    if (!resuelta) return;
+    marcarArchivado(db, resuelta.ids, 0, null);
+    invalidarReportesCache();
+    operacion = { ...resuelta, ajustes: [] };
+  });
+  return operacion;
+}
+
+export function restaurarTodoElArchivo(): number {
+  const db = getDB();
+  let restauradas = 0;
+  db.withTransactionSync(() => {
+    const ids = db.getAllSync<{ id: string }>('SELECT * FROM transacciones WHERE archivado = 1').map(f => f.id);
+    marcarArchivado(db, ids, 0, null);
+    invalidarReportesCache();
+    restauradas = ids.length;
+  });
+  return restauradas;
+}
+
+export function borrarDefinitivoPorId(id: string): OperacionArchivo {
+  const db = getDB();
+  let operacion = operacionVacia();
+  db.withTransactionSync(() => {
+    const resuelta = operacionDesdeId(db, id);
+    if (!resuelta) return;
+    db.runSync(`DELETE FROM transacciones WHERE id IN (${marcadores(resuelta.ids.length)})`, resuelta.ids);
+    aplicarAjustes(db, resuelta.ajustes);
+    invalidarReportesCache();
+    operacion = resuelta;
+  });
+  return operacion;
+}
+
+export function vaciarArchivo(): { operaciones: OperacionArchivo[]; ajustes: AjusteCuenta[] } {
+  const db = getDB();
+  let resultado: { operaciones: OperacionArchivo[]; ajustes: AjusteCuenta[] } = { operaciones: [], ajustes: [] };
+  db.withTransactionSync(() => {
+    const filas = db.getAllSync<Record<string, unknown>>('SELECT * FROM transacciones WHERE archivado = 1').map(filaArchivoDe);
+    const operaciones = agruparOperaciones(filas);
+    const ajustes = ajustesPorCuenta(operaciones);
+    const ids = filas.map(f => f.id);
+    if (ids.length > 0) {
+      db.runSync(`DELETE FROM transacciones WHERE id IN (${marcadores(ids.length)})`, ids);
+    }
+    aplicarAjustes(db, ajustes);
+    invalidarReportesCache();
+    resultado = { operaciones, ajustes };
+  });
+  return resultado;
 }
 
 export function getSaldoTotal(): number {
@@ -353,9 +577,10 @@ export function getEgresosPorDia(dias: number = 7, ref: Date = new Date()): Egre
   const hasta = keys[keys.length - 1];
   const filas = getDB().getAllSync<FilaMovimiento>(
     `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
-            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+            archivado AS archivado, banco_id AS bancoId, categoria_id AS categoriaId,
+            NULL AS categoriaNombre
      FROM transacciones
-     WHERE monto < 0 AND substr(fecha, 1, 10) BETWEEN ? AND ?`,
+     WHERE monto < 0 AND archivado = 0 AND substr(fecha, 1, 10) BETWEEN ? AND ?`,
     [desde, hasta]
   );
   return calcularEgresosPorDia(filas, desde, hasta);
@@ -365,10 +590,11 @@ export function getResumenMesActual(ref: Date = new Date()): Promise<ResumenMes>
   const mes = localMonthKey(ref);
   const filas = getDB().getAllSync<FilaMovimiento>(
     `SELECT t.monto AS monto, t.fecha AS fecha, t.es_traspaso AS esTraspaso,
-            t.banco_id AS bancoId, t.categoria_id AS categoriaId, c.nombre AS categoriaNombre
+            t.archivado AS archivado, t.banco_id AS bancoId, t.categoria_id AS categoriaId,
+            c.nombre AS categoriaNombre
      FROM transacciones t
      LEFT JOIN categorias c ON c.id = t.categoria_id
-     WHERE substr(t.fecha, 1, 7) = ?`,
+     WHERE t.archivado = 0 AND substr(t.fecha, 1, 7) = ?`,
     [mes]
   );
   return Promise.resolve(calcularResumenMes(filas, mes, 6));
@@ -378,9 +604,10 @@ export function getGastosPorBanco(mes?: string, ref: Date = new Date()): GastoBa
   const m = mes ?? localMonthKey(ref);
   const filas = getDB().getAllSync<FilaMovimiento>(
     `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
-            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+            archivado AS archivado, banco_id AS bancoId, categoria_id AS categoriaId,
+            NULL AS categoriaNombre
      FROM transacciones
-     WHERE monto < 0 AND substr(fecha, 1, 7) = ?`,
+     WHERE monto < 0 AND archivado = 0 AND substr(fecha, 1, 7) = ?`,
     [m]
   );
   return calcularGastosPorBanco(filas, m);
@@ -390,9 +617,10 @@ export function getNetoHoy(ref: Date = new Date()): number {
   const dia = localDateKey(ref);
   const filas = getDB().getAllSync<FilaMovimiento>(
     `SELECT monto AS monto, fecha AS fecha, es_traspaso AS esTraspaso,
-            banco_id AS bancoId, categoria_id AS categoriaId, NULL AS categoriaNombre
+            archivado AS archivado, banco_id AS bancoId, categoria_id AS categoriaId,
+            NULL AS categoriaNombre
      FROM transacciones
-     WHERE substr(fecha, 1, 10) = ?`,
+     WHERE archivado = 0 AND substr(fecha, 1, 10) = ?`,
     [dia]
   );
   return calcularNetoDia(filas, dia);
@@ -514,14 +742,47 @@ export function getReporteCache(tipo: string, fecha: string): string | null {
     'SELECT contenido_json FROM reportes_cache WHERE tipo = ? AND fecha = ?',
     [tipo, fecha]
   );
-  return row?.contenido_json ?? null;
+  if (!row) return null;
+  try {
+    return desencriptarCampo(row.contenido_json);
+  } catch (e) {
+    console.warn('[DB] No se pudo descifrar el reporte cacheado:', e);
+    return row.contenido_json;
+  }
 }
 
 export function setReporteCache(tipo: string, fecha: string, json: string): void {
   getDB().runSync(
     'INSERT OR REPLACE INTO reportes_cache (id, tipo, fecha, contenido_json) VALUES (?, ?, ?, ?)',
-    [uuid(), tipo, fecha, json]
+    [uuid(), tipo, fecha, encriptarCampo(json)]
   );
+}
+
+export function invalidarReportesCache(): void {
+  getDB().runSync('DELETE FROM reportes_cache');
+}
+
+export function migrarCamposCifrados(): void {
+  try {
+    const filasChat = getDB().getAllSync<{ id: string; texto: string }>(
+      "SELECT id, texto FROM chat_cache WHERE texto NOT LIKE 'v2:%'"
+    );
+    for (const fila of filasChat) {
+      getDB().runSync('UPDATE chat_cache SET texto = ? WHERE id = ?', [encriptarCampo(fila.texto), fila.id]);
+    }
+  } catch (e) {
+    console.warn('[DB] Migracion cifrado chat_cache:', e);
+  }
+  try {
+    const filasReportes = getDB().getAllSync<{ id: string; contenido_json: string }>(
+      "SELECT id, contenido_json FROM reportes_cache WHERE contenido_json NOT LIKE 'v2:%'"
+    );
+    for (const fila of filasReportes) {
+      getDB().runSync('UPDATE reportes_cache SET contenido_json = ? WHERE id = ?', [encriptarCampo(fila.contenido_json), fila.id]);
+    }
+  } catch (e) {
+    console.warn('[DB] Migracion cifrado reportes_cache:', e);
+  }
 }
 
 
@@ -543,20 +804,28 @@ export function cargarMensajesChat(sessionId?: string): MensajeChat[] {
     : getDB().getAllSync<Record<string, unknown>>(
         'SELECT * FROM chat_cache ORDER BY fecha ASC'
       );
-  return rows.map(r => ({
-    id:        r['id'] as string,
-    rol:       r['rol'] as 'user' | 'assistant' | 'system',
-    texto:     r['texto'] as string,
-    fecha:     r['fecha'] as string,
-    sessionId: r['session_id'] as string | undefined,
-  }));
+  return rows.map(r => {
+    let texto = r['texto'] as string;
+    try {
+      texto = desencriptarCampo(texto) ?? '';
+    } catch (e) {
+      console.warn('[DB] No se pudo descifrar el mensaje de chat:', e);
+    }
+    return {
+      id:        r['id'] as string,
+      rol:       r['rol'] as 'user' | 'assistant' | 'system',
+      texto,
+      fecha:     r['fecha'] as string,
+      sessionId: r['session_id'] as string | undefined,
+    };
+  });
 }
 
 export function guardarMensajeChat(msg: Omit<MensajeChat, 'id'> & { sessionId?: string }): MensajeChat {
   const id = uuid();
   getDB().runSync(
     'INSERT INTO chat_cache (id, rol, texto, fecha, session_id) VALUES (?, ?, ?, ?, ?)',
-    [id, msg.rol, msg.texto, msg.fecha, msg.sessionId ?? null]
+    [id, msg.rol, encriptarCampo(msg.texto), msg.fecha, msg.sessionId ?? null]
   );
   return { ...msg, id };
 }
@@ -574,11 +843,20 @@ export function getSesionesChat(): { sessionId: string; preview: string; fecha: 
      )
      ORDER BY fecha DESC`
   );
-  return rows.map(r => ({
-    sessionId: r['session_id'] as string,
-    preview:   (r['texto'] as string).slice(0, 60),
-    fecha:     r['fecha'] as string,
-  }));
+  return rows.map(r => {
+    let preview: string;
+    try {
+      preview = (desencriptarCampo(r['texto'] as string) ?? '').slice(0, 60);
+    } catch (e) {
+      console.warn('[DB] No se pudo descifrar la sesión de chat:', e);
+      preview = ((r['texto'] as string) ?? '').slice(0, 60);
+    }
+    return {
+      sessionId: r['session_id'] as string,
+      preview,
+      fecha:     r['fecha'] as string,
+    };
+  });
 }
 
 export function eliminarSesionChat(sessionId: string): void {
@@ -659,7 +937,7 @@ export function notificarTransaccion(titulo: string, cuerpo: string): void {
   try {
     const Notifications = require('expo-notifications');
     Notifications.scheduleNotificationAsync({
-      content: { title: titulo, body: cuerpo, data: { screen: 'notificaciones' }, sound: true },
+      content: { title: titulo, body: 'Abrí la app para verlo.', data: { screen: 'notificaciones' }, sound: true },
       trigger: null,
     }).catch(() => {});
   } catch { console.warn('[DB] Error en operación'); }

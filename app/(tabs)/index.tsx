@@ -467,6 +467,9 @@ export default function DashboardScreen() {
               </Text>
             )}
           </View>
+          <Text style={s.saldoNota}>
+            El saldo incluye lo archivado; los totales de gasto, no.
+          </Text>
         </View>
 
         <View style={[s.padH, { marginBottom: 32 }]}>
@@ -737,6 +740,12 @@ function useStyles(t: typeof colors) {
       fontVariant: ['tabular-nums'],
       fontSize: 13,
       fontWeight: '600',
+    },
+    saldoNota: {
+      fontFamily: 'Geist',
+      fontSize: 11.5,
+      color: t.muteText,
+      marginTop: 6,
     },
     seccionHeader: {
       flexDirection: 'row',

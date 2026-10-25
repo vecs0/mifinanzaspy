@@ -1,10 +1,12 @@
 /**
  * budgets
- * Responsabilidad: CRUD de presupuestos por categoría
+ * Responsabilidad: CRUD de presupuestos por categoría y gasto del mes sin filas archivadas
  * Usado por: presupuestos, crecer
- * Depende de: database
+ * Depende de: database, totales
  */
 import { getDB } from '@/services/database';
+import { gastosPorCategoriaMes } from '@/services/totales';
+import type { FilaAgregable } from '@/services/totales';
 
 export interface Presupuesto {
   id: string;
@@ -46,15 +48,17 @@ export function getPresupuestosConGasto(mes: string): PresupuestoConGasto[] {
   if (presupuestos.length === 0) return [];
 
   const db = getDB();
-  const gastos = db.getAllSync<{ categoria_id: string; total: number }>(
-    `SELECT categoria_id, SUM(ABS(monto)) AS total
+  const filas = db.getAllSync<FilaAgregable>(
+    `SELECT monto AS monto, fecha AS fecha, archivado AS archivado,
+            categoria_id AS categoriaId, banco_id AS bancoId
      FROM transacciones
-     WHERE monto < 0 AND substr(fecha, 1, 7) = ?
-     GROUP BY categoria_id`,
+     WHERE monto < 0 AND substr(fecha, 1, 7) = ?`,
     [mes]
   );
   const gastoMap: Record<string, number> = {};
-  for (const g of gastos) gastoMap[g.categoria_id] = g.total;
+  for (const g of gastosPorCategoriaMes(filas)) {
+    if (g.mes === mes) gastoMap[g.categoriaId] = g.total;
+  }
 
   return presupuestos.map(p => ({
     ...p,

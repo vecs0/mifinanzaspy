@@ -12,16 +12,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { getTransacciones, updateTransaccion, deleteTransaccion } from '@/services/database';
+import { getTransaccionPorId, updateTransaccion, getCuentas, archivarTransaccion, restaurarTransaccion, borrarDefinitivoPorId } from '@/services/database';
+import { deltaSaldoAlBorrar, detalleAjustes, type AjusteCuenta, type CuentaArchivo } from '@/services/archivo';
+import { avisarAjusteEnArchivo } from '@/components/ArchivedSection';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { BankLogo } from '@/components/BankLogo';
 import { InlineError } from '@/components/InlineError';
 import { Skeleton } from '@/components/Skeleton';
 import { useThemeCtx } from '@/services/ThemeContext';
-import { localDateKey } from '@/services/dateKeys';
+import { localDateTimeKey, storedDayKey } from '@/services/dateKeys';
 import { colors, colorsDark, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
-import type { Transaccion } from '@/types/finance';
+import type { Transaccion, CuentaBancaria } from '@/types/finance';
 
 const FUENTE_LABEL: Record<string, string> = {
   sms:          'SMS',
@@ -29,10 +31,38 @@ const FUENTE_LABEL: Record<string, string> = {
   manual:       'Manual',
   csv:          'CSV',
   email:        'Email',
+  pdf:          'PDF',
+  foto:         'Foto',
 };
 
 function fmtGs(n: number): string {
   return Math.abs(n).toLocaleString('es-PY').replace(/,/g, '.');
+}
+
+function fmtAjuste(n: number): string {
+  return `${n < 0 ? '−' : '+'}Gs ${fmtGs(n)}`;
+}
+
+function esPataDeTraspaso(tx: Transaccion): boolean {
+  return tx.esTraspaso === 1 && !!tx.cuentaParId;
+}
+
+function ajustesDeBorrado(tx: Transaccion): AjusteCuenta[] {
+  const ajustes: AjusteCuenta[] = [{ cuentaId: tx.cuentaId, delta: deltaSaldoAlBorrar(tx.monto) }];
+  if (esPataDeTraspaso(tx) && tx.cuentaParId) {
+    ajustes.push({ cuentaId: tx.cuentaParId, delta: deltaSaldoAlBorrar(0 - tx.monto) });
+  }
+  return ajustes;
+}
+
+function cuentasParaAjustes(ajustes: AjusteCuenta[], cuentas: CuentaBancaria[]): CuentaArchivo[] {
+  const lista: CuentaArchivo[] = cuentas.map(c => ({ id: c.id, alias: c.alias, activa: c.activa }));
+  for (const ajuste of ajustes) {
+    if (!lista.some(c => c.id === ajuste.cuentaId)) {
+      lista.push({ id: ajuste.cuentaId, alias: 'Cuenta desactivada', activa: false });
+    }
+  }
+  return lista;
 }
 
 function XIcon() {
@@ -64,22 +94,26 @@ export default function TxDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [tx, setTx] = useState<Transaccion | null>(null);
+  const [cuentas, setCuentas] = useState<CuentaBancaria[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [mensajeOk, setMensajeOk] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [editDesc, setEditDesc] = useState('');
   const [editMonto, setEditMonto] = useState('');
   const [editFecha, setEditFecha] = useState('');
   const [deleteModal, setDeleteModal] = useState(false);
+  const [archivarModal, setArchivarModal] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   async function cargar() {
     setCargando(true);
     setErrorCarga(null);
     try {
-      const todas = await getTransacciones({ limite: 500 });
-      setTx(todas.find(x => x.id === id) ?? null);
+      const encontrada = await getTransaccionPorId(id);
+      setTx(encontrada);
+      setCuentas(getCuentas());
     } catch (e) {
       console.error('Detalle error:', e);
       setErrorCarga('No pudimos cargar esta transacción.');
@@ -95,7 +129,7 @@ export default function TxDetailScreen() {
     setErrorMsg('');
     setEditDesc(tx.descripcion ?? '');
     setEditMonto(String(Math.abs(tx.monto)));
-    setEditFecha(localDateKey(new Date(tx.fecha)));
+    setEditFecha(storedDayKey(tx.fecha));
     setMenuOpen(false);
     setEditModal(true);
   }
@@ -108,6 +142,10 @@ export default function TxDetailScreen() {
     const montoFinal = tx.monto > 0 ? montoNum : -montoNum;
     try {
       await updateTransaccion(tx.id, { descripcion: editDesc.trim(), monto: montoFinal, fecha: editFecha });
+      if (tx.archivado === 1 && montoFinal !== tx.monto) {
+        const alias = cuentas.find(c => c.id === tx.cuentaId)?.alias ?? 'la cuenta desactivada';
+        avisarAjusteEnArchivo(alias, montoFinal - tx.monto);
+      }
       setTx({ ...tx, descripcion: editDesc.trim(), monto: montoFinal, fecha: editFecha });
       setEditModal(false);
     } catch (e) {
@@ -116,15 +154,61 @@ export default function TxDetailScreen() {
     }
   }
 
+  function abrirArchivar() {
+    setMenuOpen(false);
+    setMensajeOk('');
+    setArchivarModal(true);
+  }
+
+  function ejecutarArchivar() {
+    if (!tx) return;
+    try {
+      const operacion = archivarTransaccion(tx.id);
+      setArchivarModal(false);
+      if (operacion.ids.length === 0) {
+        setErrorCarga('No pudimos archivar esta transacción.');
+        return;
+      }
+      setTx({ ...tx, archivado: 1, archivadoEn: localDateTimeKey() });
+      setMensajeOk(operacion.traspaso
+        ? 'Archivamos las dos partes del traspaso. Quedan en Datos archivados y el saldo no cambió.'
+        : 'El movimiento quedó en Datos archivados. El saldo no cambió.');
+    } catch (e) {
+      console.error('Archivar error:', e);
+      setArchivarModal(false);
+      setErrorCarga('No pudimos archivar la transacción.');
+    }
+  }
+
+  function ejecutarRestaurar() {
+    if (!tx) return;
+    setMenuOpen(false);
+    try {
+      const operacion = restaurarTransaccion(tx.id);
+      if (operacion.ids.length === 0) {
+        setErrorCarga('No pudimos restaurar esta transacción.');
+        return;
+      }
+      setTx({ ...tx, archivado: 0, archivadoEn: null });
+      setMensajeOk(operacion.traspaso
+        ? 'Volvieron las dos partes del traspaso a las vistas. El saldo no cambió.'
+        : 'El movimiento volvió a las vistas. El saldo no cambió.');
+    } catch (e) {
+      console.error('Restaurar error:', e);
+      setErrorCarga('No pudimos restaurar la transacción.');
+    }
+  }
+
   function confirmarEliminar() {
     setMenuOpen(false);
+    setMensajeOk('');
     setDeleteModal(true);
   }
 
   function ejecutarEliminar() {
     if (!tx) return;
     try {
-      deleteTransaccion(tx.id, tx.monto, tx.cuentaId);
+      borrarDefinitivoPorId(tx.id);
       setDeleteModal(false);
       router.back();
     } catch (e) {
@@ -168,13 +252,20 @@ export default function TxDetailScreen() {
   const banco     = BANCO_POR_ID[tx.bancoId];
   const esIngreso = tx.monto > 0;
   const esEfectivo = tx.bancoId === 'efectivo' || tx.cuentaId === '__efectivo__' || !banco;
-  const fecha = new Date(tx.fecha);
+  const fecha = new Date(`${storedDayKey(tx.fecha)}T12:00:00`);
+  const hora = tx.fecha.slice(11, 16) || '00:00';
+  const archivado = tx.archivado === 1;
+  const nombreAdjunto = tx.adjunto ? tx.adjunto.split('|')[0] : null;
+  const fechaArchivado = tx.archivadoEn ? tx.archivadoEn.replace('T', ' ') : '—';
+  const ajustesBorrado = ajustesDeBorrado(tx);
+  const detalleBorrado = detalleAjustes(ajustesBorrado, cuentasParaAjustes(ajustesBorrado, cuentas));
 
   const filas: [string, string][] = [
     [esEfectivo ? 'Cuenta' : 'Banco', esEfectivo ? 'Efectivo' : (banco?.nombre ?? tx.bancoId)],
     ['Categoría', cat?.nombre ?? tx.categoriaId],
     ['Tipo', esIngreso ? 'Ingreso' : 'Egreso'],
     ['Captura', FUENTE_LABEL[tx.fuente] ?? tx.fuente],
+    ...(nombreAdjunto ? [['Archivo', nombreAdjunto] as [string, string]] : []),
     ['Estado', tx.procesado ? 'Clasificado' : 'Pendiente'],
   ];
   if (tx.saldoPost !== null) filas.push(['Saldo resultante', `Gs ${fmtGs(tx.saldoPost)}`]);
@@ -214,13 +305,38 @@ export default function TxDetailScreen() {
             <Text style={s.menuItemText}>Preguntar al asesor</Text>
           </TouchableOpacity>
           <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 4 }} />
+          {!archivado && (
+            <TouchableOpacity style={s.menuItem} onPress={abrirArchivar} accessibilityRole="button">
+              <Text style={[s.menuItemText, { color: t.accent }]}>Archivar</Text>
+            </TouchableOpacity>
+          )}
+          {archivado && (
+            <TouchableOpacity style={s.menuItem} onPress={ejecutarRestaurar} accessibilityRole="button">
+              <Text style={[s.menuItemText, { color: t.accent }]}>Restaurar</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={s.menuItem} onPress={confirmarEliminar} accessibilityRole="button">
-            <Text style={[s.menuItemText, { color: t.negative }]}>Eliminar</Text>
+            <Text style={[s.menuItemText, { color: t.negative }]}>
+              {archivado ? 'Borrar definitivamente' : 'Eliminar'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 48 }}>
+        {archivado && (
+          <View style={s.avisoArchivo}>
+            <Text style={s.avisoArchivoTitulo}>Archivado el {fechaArchivado}</Text>
+            <Text style={s.avisoArchivoTexto}>
+              No aparece en el Historial ni en los totales. El saldo sí lo incluye.
+            </Text>
+          </View>
+        )}
+
+        {mensajeOk !== '' && (
+          <View style={s.ok}><Text style={s.okTxt}>{mensajeOk}</Text></View>
+        )}
+
         {errorCarga && <View style={{ marginBottom: 16 }}><InlineError mensaje={errorCarga} /></View>}
 
         <View style={s.hero}>
@@ -237,7 +353,7 @@ export default function TxDetailScreen() {
           </Text>
           <Text style={s.heroFecha}>
             {fecha.toLocaleDateString('es-PY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            {' · '}{fecha.getHours().toString().padStart(2,'0')}:{fecha.getMinutes().toString().padStart(2,'0')}
+            {' · '}{hora}
           </Text>
         </View>
 
@@ -289,16 +405,52 @@ export default function TxDetailScreen() {
       <Modal visible={deleteModal} animationType="fade" transparent onRequestClose={() => setDeleteModal(false)}>
         <TouchableOpacity style={s.delOverlay} activeOpacity={1} onPress={() => setDeleteModal(false)}>
           <View style={s.delCard}>
-            <Text style={s.delTitle}>Eliminar transacción</Text>
-            <Text style={s.delDesc} numberOfLines={2}>{tx?.descripcion || 'Esta transacción'}</Text>
-            <Text style={s.delMonto}>Gs {fmtGs(tx?.monto ?? 0)}</Text>
+            <Text style={s.delTitle}>{archivado ? 'Borrar definitivamente' : 'Eliminar transacción'}</Text>
+            <Text style={s.delDesc} numberOfLines={2}>{tx.descripcion || 'Esta transacción'}</Text>
+            <Text style={s.delMonto}>{tx.monto > 0 ? '+' : '−'}Gs {fmtGs(tx.monto)}</Text>
+            <Text style={s.delSubtitulo}>El saldo va a cambiar así:</Text>
+            {detalleBorrado.map(ajuste => (
+              <Text key={ajuste.cuentaId} style={[s.delAjuste, { color: ajuste.activa ? t.ink : t.ink3 }]}>
+                {ajuste.alias}: {fmtAjuste(ajuste.delta)}
+              </Text>
+            ))}
+            {detalleBorrado.some(a => !a.activa) && (
+              <Text style={s.delAviso}>Hay una cuenta desactivada: su ajuste no se va a ver en el saldo total.</Text>
+            )}
+            {esPataDeTraspaso(tx) && (
+              <Text style={s.delAviso}>Esto es una transferencia entre tus cuentas: se borran las dos partes.</Text>
+            )}
             <Text style={s.delAdvertencia}>Esta acción no se puede deshacer.</Text>
             <View style={s.delBtns}>
               <TouchableOpacity style={s.delBtnCancel} onPress={() => setDeleteModal(false)} accessibilityRole="button">
                 <Text style={s.delBtnCancelText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.delBtnDelete} onPress={ejecutarEliminar} accessibilityRole="button">
-                <Text style={s.delBtnDeleteText}>Eliminar</Text>
+                <Text style={s.delBtnDeleteText}>{archivado ? 'Borrar' : 'Eliminar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={archivarModal} animationType="fade" transparent onRequestClose={() => setArchivarModal(false)}>
+        <TouchableOpacity style={s.delOverlay} activeOpacity={1} onPress={() => setArchivarModal(false)}>
+          <View style={s.delCard}>
+            <Text style={s.delTitle}>Archivar movimiento</Text>
+            <Text style={s.delDesc} numberOfLines={2}>{tx.descripcion || 'Esta transacción'}</Text>
+            <Text style={s.delMonto}>{tx.monto > 0 ? '+' : '−'}Gs {fmtGs(tx.monto)}</Text>
+            <Text style={s.delTexto}>
+              Sale de las vistas y de los totales, pero no se pierde: queda guardado en Datos archivados. El saldo no cambia.
+            </Text>
+            {esPataDeTraspaso(tx) && (
+              <Text style={s.delAviso}>Esto es una transferencia entre tus cuentas: se archivan las dos partes.</Text>
+            )}
+            <View style={s.delBtns}>
+              <TouchableOpacity style={s.delBtnCancel} onPress={() => setArchivarModal(false)} accessibilityRole="button">
+                <Text style={s.delBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.delBtnDelete, { backgroundColor: t.accent }]} onPress={ejecutarArchivar} accessibilityRole="button">
+                <Text style={s.delBtnDeleteText}>Archivar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -348,6 +500,13 @@ function useStyles(t: typeof colors) {
       fontFamily: 'GeistMono', letterSpacing: -1, fontVariant: ['tabular-nums'],
     },
     heroFecha: { fontSize: 13, color: t.ink2, textAlign: 'center', textTransform: 'capitalize' },
+    avisoArchivo: {
+      backgroundColor: t.accentBg, borderRadius: br.md, padding: 14, marginBottom: 16, gap: 4,
+    },
+    avisoArchivoTitulo: { fontSize: 13, fontWeight: '700', color: t.ink, fontFamily: 'GeistMono' },
+    avisoArchivoTexto: { fontSize: 12.5, color: t.ink2, lineHeight: 18 },
+    ok: { backgroundColor: t.positiveBg, borderRadius: br.md, padding: 12, marginBottom: 16 },
+    okTxt: { fontSize: 13, color: t.positive, lineHeight: 18 },
     lista: { marginBottom: 16 },
     metaFila: {
       flexDirection: 'row', justifyContent: 'space-between',
@@ -403,6 +562,10 @@ function useStyles(t: typeof colors) {
       color: t.ink, letterSpacing: -0.5, marginBottom: 12, fontVariant: ['tabular-nums'],
     },
     delAdvertencia: { fontSize: 13, color: t.ink2, marginBottom: 24 },
+    delSubtitulo: { fontSize: 12, fontWeight: '600', color: t.ink2, marginBottom: 6 },
+    delAjuste: { fontSize: 13, fontFamily: 'GeistMono', textAlign: 'center', marginBottom: 2 },
+    delAviso: { fontSize: 12, color: t.warn, lineHeight: 17, textAlign: 'center', marginTop: 4 },
+    delTexto: { fontSize: 13, color: t.ink2, lineHeight: 19, textAlign: 'center', marginBottom: 20 },
     delBtns: { flexDirection: 'row', gap: 12, width: '100%' },
     delBtnCancel: {
       flex: 1, minHeight: 48, borderRadius: br.md,

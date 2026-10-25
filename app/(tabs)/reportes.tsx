@@ -16,7 +16,7 @@ import { getTransacciones, setConfig, getConfig } from '@/services/database';
 import { Icon } from '@/components/Icon';
 import { InlineError } from '@/components/InlineError';
 import { Skeleton, SkeletonRows } from '@/components/Skeleton';
-import { localDateKey } from '@/services/dateKeys';
+import { localDateKey, localMonthKey } from '@/services/dateKeys';
 import { CATEGORIA_POR_ID } from '@/constants/categories';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark } from '@/theme/design-system';
@@ -176,7 +176,7 @@ export default function ReportesScreen() {
       }
       const pdfService = await import('@/services/pdfReportService');
       const now = new Date();
-      const mesKey = now.toISOString().slice(0, 7);
+      const mesKey = localMonthKey(now);
       const anio = now.getFullYear();
       const mesNum = now.getMonth() + 1;
       const mesAntKey = mesNum === 1

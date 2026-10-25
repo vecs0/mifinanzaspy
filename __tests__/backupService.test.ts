@@ -8,7 +8,7 @@ const COLS: Record<string, string[]> = {
   presupuestos: ['id', 'categoria_id', 'monto_limite', 'mes'],
   recordatorios: ['id', 'titulo', 'fecha'],
   metas: ['id', 'titulo', 'meta_monto'],
-  transacciones: ['id', 'cuenta_id', 'banco_id', 'monto', 'tipo', 'categoria_id', 'descripcion', 'fecha', 'sms_raw', 'hash_verificacion'],
+  transacciones: ['id', 'cuenta_id', 'banco_id', 'monto', 'tipo', 'categoria_id', 'descripcion', 'fecha', 'sms_raw', 'hash_verificacion', 'archivado'],
   configuracion: ['clave', 'valor'],
   reportes_cache: ['id'],
 };
@@ -38,7 +38,7 @@ const fakeDb = {
     if (sql.startsWith('SELECT hash_verificacion AS h')) {
       return state.tablas.transacciones
         .filter(f => f.hash_verificacion !== null && f.hash_verificacion !== undefined)
-        .map(f => ({ h: f.hash_verificacion }));
+        .map(f => ({ h: f.hash_verificacion, archivado: f.archivado ?? 0 }));
     }
     throw new Error('SQL no soportado: ' + sql);
   },
@@ -93,7 +93,7 @@ jest.mock('@/services/metas', () => ({ asegurarTablaMetas: jest.fn() }));
 
 import {
   empaquetarBackup, desempaquetarBackup, derivarClave, construirPayload, restaurarPayload, generarCSV,
-  BackupError, BACKUP_SCHEMA_VERSION, type PayloadBackup,
+  CSV_COLUMNAS, BackupError, BACKUP_SCHEMA_VERSION, type PayloadBackup,
 } from '@/services/backupService';
 import { encrypt, decrypt } from '@/services/encryption';
 
@@ -112,6 +112,10 @@ async function sembrar() {
       fecha: '2026-05-01', sms_raw: (await encrypt('SMS crudo'))!, hash_verificacion: 'h1',
     },
   ];
+}
+
+function tablasVacias(): Record<string, Fila[]> {
+  return Object.fromEntries(Object.keys(COLS).map(t => [t, []]));
 }
 
 describe('backupService', () => {
@@ -264,13 +268,134 @@ describe('backupService', () => {
   it('CSV: escapa comillas/comas, neutraliza formulas y usa descripcion descifrada', () => {
     const csv = generarCSV(
       [
-        { id: 'a', cuenta_id: 'c1', banco_id: 'itau', monto: -1500, tipo: 'egreso', categoria_id: 'comida', descripcion: '=HYPERLINK("x"), "hola"', fecha: '2026-05-01', fuente: 'manual', notas: null },
+        { id: 'a', cuenta_id: 'c1', banco_id: 'itau', monto: -1500, tipo: 'egreso', categoria_id: 'comida', descripcion: '=HYPERLINK("x"), "hola"', fecha: '2026-05-01', fuente: 'manual', notas: null, archivado: 0 },
+        { id: 'b', cuenta_id: 'c1', banco_id: 'itau', monto: -1500, tipo: 'egreso', categoria_id: 'comida', descripcion: 'Archivada', fecha: '2026-05-02', fuente: 'manual', notas: 'Guardada', archivado: 1 },
       ],
       [{ id: 'c1', alias: 'Mi Itau' }],
       [{ id: 'comida', nombre: 'Comida' }]
     );
     const lineas = csv.replace('﻿', '').trim().split('\r\n');
-    expect(lineas[0]).toBe('fecha,cuenta,banco,tipo,monto,categoria,descripcion,fuente,notas');
-    expect(lineas[1]).toBe('2026-05-01,Mi Itau,itau,egreso,-1500,Comida,"\'=HYPERLINK(""x""), ""hola""",manual,');
+    expect(lineas[0]).toBe('fecha,cuenta,banco,tipo,monto,categoria,descripcion,fuente,notas,archivado');
+    expect(lineas[1]).toBe('2026-05-02,Mi Itau,itau,egreso,-1500,Comida,Archivada,manual,Guardada,1');
+    expect(lineas[2]).toBe('2026-05-01,Mi Itau,itau,egreso,-1500,Comida,"\'=HYPERLINK(""x""), ""hola""",manual,,0');
+  });
+
+  it('CSV_COLUMNAS es el contrato con archivado al final', () => {
+    expect(CSV_COLUMNAS).toEqual([
+      'fecha', 'cuenta', 'banco', 'tipo', 'monto', 'categoria', 'descripcion', 'fuente', 'notas', 'archivado',
+    ]);
+  });
+
+  it('payload conserva la marca de archivado y la cuenta en el export', async () => {
+    await sembrar();
+    state.tablas.transacciones[0].archivado = 1;
+    const { payload, archivados } = await construirPayload();
+    expect(payload.tables.transacciones[0].archivado).toBe(1);
+    expect(archivados).toBe(1);
+  });
+
+  it('copia nueva restaura la fila archivada y la mantiene archivada', async () => {
+    await sembrar();
+    state.tablas.transacciones[0].archivado = 1;
+    const { payload } = await construirPayload();
+    reset();
+    const r = await restaurarPayload(payload, 'reemplazar');
+    expect(r.archivadoNormalizado).toBe(0);
+    expect(state.tablas.transacciones).toHaveLength(1);
+    expect(state.tablas.transacciones[0].archivado).toBe(1);
+  });
+
+  it('copia vieja sin la columna archivado restaura todo visible sin lanzar', async () => {
+    const tables = tablasVacias();
+    tables.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 1000 }];
+    tables.transacciones = [{
+      id: 'old1', cuenta_id: 'c1', banco_id: 'itau', monto: -100, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Vieja', fecha: '2025-01-01', sms_raw: null, hash_verificacion: 'hx',
+    }];
+    const r = await restaurarPayload({ version: 1, createdAt: 'x', tables }, 'reemplazar');
+    expect(r.archivadoNormalizado).toBe(0);
+    expect(r.omitidosArchivados).toBe(0);
+    expect(state.tablas.transacciones[0].archivado).toBe(0);
+  });
+
+  it('valores de archivado fuera de 0 y 1 se normalizan y se cuentan', async () => {
+    const tables = tablasVacias();
+    tables.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 0 }];
+    const base = {
+      cuenta_id: 'c1', banco_id: 'itau', tipo: 'egreso', categoria_id: 'comida',
+      fecha: '2026-01-01', sms_raw: null,
+    };
+    tables.transacciones = [
+      { ...base, id: 'a', monto: -1, descripcion: 'Uno', hash_verificacion: 'ha', archivado: 2 },
+      { ...base, id: 'b', monto: -1, descripcion: 'Dos', hash_verificacion: 'hb', archivado: 'texto' },
+      { ...base, id: 'c', monto: -1, descripcion: 'Tres', hash_verificacion: 'hc', archivado: '1' },
+      { ...base, id: 'd', monto: -1, descripcion: 'Cuatro', hash_verificacion: 'hd', archivado: 0 },
+    ];
+    const r = await restaurarPayload({ version: 1, createdAt: 'x', tables }, 'reemplazar');
+    const marcas = Object.fromEntries(state.tablas.transacciones.map(f => [f.id, f.archivado]));
+    expect(marcas).toEqual({ a: 0, b: 0, c: 1, d: 0 });
+    expect(r.archivadoNormalizado).toBe(3);
+  });
+
+  it('combinar: un hash local archivado cuenta en omitidosArchivados y no en omitidos', async () => {
+    state.tablas.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 900000 }];
+    state.tablas.transacciones = [{
+      id: 't1', cuenta_id: 'c1', banco_id: 'itau', monto: -100000, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Original', fecha: '2026-05-01',
+      sms_raw: null, hash_verificacion: 'h1', archivado: 1,
+    }];
+    const tables = tablasVacias();
+    tables.transacciones = [{
+      id: 't2', cuenta_id: 'c1', banco_id: 'itau', monto: -100000, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Original', fecha: '2026-05-01',
+      sms_raw: null, hash_verificacion: 'h1', archivado: 1,
+    }];
+    const r = await restaurarPayload({ version: 1, createdAt: 'x', tables }, 'combinar');
+    expect(r.omitidosArchivados).toBe(1);
+    expect(r.omitidos).toBe(0);
+    expect(r.insertados.transacciones).toBe(0);
+    expect(state.tablas.transacciones).toHaveLength(1);
+  });
+
+  it('combinar: una fila archivada insertada suma su monto al saldo', async () => {
+    state.tablas.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 900000 }];
+    state.tablas.transacciones = [{
+      id: 't1', cuenta_id: 'c1', banco_id: 'itau', monto: -100000, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Visible', fecha: '2026-05-01',
+      sms_raw: null, hash_verificacion: 'h1', archivado: 0,
+    }];
+    const tables = tablasVacias();
+    tables.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 900000 }];
+    tables.transacciones = [{
+      id: 't2', cuenta_id: 'c1', banco_id: 'itau', monto: -50000, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Archivada', fecha: '2026-05-02',
+      sms_raw: null, hash_verificacion: 'h2', archivado: 1,
+    }];
+    const r = await restaurarPayload({ version: 1, createdAt: 'x', tables }, 'combinar');
+    expect(r.insertados.transacciones).toBe(1);
+    expect(state.tablas.cuentas[0].saldo_actual).toBe(850000);
+    expect(state.tablas.transacciones.find(f => f.id === 't2')!.archivado).toBe(1);
+  });
+
+  it('combinar deja reportes_cache vacia', async () => {
+    state.tablas.cuentas = [{ id: 'c1', banco_id: 'itau', alias: 'Itau', saldo_actual: 0 }];
+    state.tablas.reportes_cache = [{ id: 'r1' }];
+    const tables = tablasVacias();
+    tables.cuentas = [{ id: 'c2', banco_id: 'itau', alias: 'Nueva', saldo_actual: 100 }];
+    const r = await restaurarPayload({ version: 1, createdAt: 'x', tables }, 'combinar');
+    expect(r.modo).toBe('combinar');
+    expect(state.tablas.reportes_cache).toEqual([]);
+  });
+
+  it('construirPayload cuenta los archivados que devuelve ResultadoExport.archivados', async () => {
+    await sembrar();
+    state.tablas.transacciones.push({
+      id: 't2', cuenta_id: 'c1', banco_id: 'itau', monto: -20000, tipo: 'egreso',
+      categoria_id: 'comida', descripcion: 'Otra', fecha: '2026-05-02',
+      sms_raw: null, hash_verificacion: 'h2', archivado: 1,
+    });
+    const { payload, archivados } = await construirPayload();
+    expect(payload.tables.transacciones.filter(f => f.archivado === 1)).toHaveLength(1);
+    expect(archivados).toBe(1);
   });
 });

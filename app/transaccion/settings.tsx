@@ -20,6 +20,7 @@ import { useThemeCtx, type ModoOscuro } from '@/services/ThemeContext';
 import { BANCO_POR_ID } from '@/constants/banks';
 import { BankLogo } from '@/components/BankLogo';
 import { BackupSection } from '@/components/BackupSection';
+import { ArchivedSection } from '@/components/ArchivedSection';
 import { colors, colorsDark, borderRadius as br } from '@/theme/design-system';
 import type { CuentaBancaria } from '@/types/finance';
 
@@ -641,6 +642,10 @@ export default function SettingsScreen() {
     setCargando(false);
   }, []);
 
+  function recargarCuentas() {
+    setCuentas(getCuentas());
+  }
+
   function toggleExpand(id: string) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandida(prev => prev === id ? null : id);
@@ -717,6 +722,7 @@ export default function SettingsScreen() {
 
       <CapturaSection />
       <AppSection />
+      <ArchivedSection onCambio={recargarCuentas} />
       <BackupSection />
     </View>
   );

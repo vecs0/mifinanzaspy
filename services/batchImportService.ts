@@ -2,10 +2,12 @@
  * batchImportService
  * Responsabilidad: Importación masiva de comprobantes con IA
  * Usado por: components/comprobante/BatchPickerScreen
- * Depende de: apiConfig, importService
+ * Depende de: apiConfig, importService, dateKeys, erroresIA, jsonUtils
  */
 import { llamarAIProxy } from '@/services/apiConfig';
 import type { PreviewItem } from '@/services/importService';
+import { localDateKey } from '@/services/dateKeys';
+import { clasificarExcepcion, clasificarHTTP, type CasoErrorCarga } from '@/services/erroresIA';
 import { extraerJSONArray } from '@/services/jsonUtils';
 
 function normalizeItem(p: any): PreviewItem | null {
@@ -28,7 +30,7 @@ function normalizeItem(p: any): PreviewItem | null {
   if (isNaN(monto) || monto === 0) return null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-    fecha = new Date().toISOString().slice(0, 10);
+    fecha = localDateKey();
   }
 
   return {
@@ -40,6 +42,14 @@ function normalizeItem(p: any): PreviewItem | null {
     contraparteBancoId: Array.isArray(p) ? (p[3] != null ? String(p[3]) : null) : (p.contraparte_banco_id ?? p.contraparteBancoId ?? null),
     contraparteNombre: Array.isArray(p) ? (p[4] != null ? String(p[4]) : null) : (p.contraparte_nombre ?? p.contraparteNombre ?? null),
   };
+}
+
+function numeroEntero(valor: unknown): number | undefined {
+  if (valor == null || valor === '') return undefined;
+  const numero = typeof valor === 'number'
+    ? valor
+    : parseInt(String(valor).replace(/\./g, '').replace(/[^\d-]/g, ''), 10);
+  return Number.isFinite(numero) ? numero : undefined;
 }
 
 function deduplicar(items: PreviewItem[]): PreviewItem[] {
@@ -69,26 +79,29 @@ const PROMPT_PDF = `EXTRACTO BANCARIO — extraé ABSOLUTAMENTE TODAS las transa
 Identificá el banco (Itaú, Ueno, Continental, Familiar, Regional, Mango, etc).
 
 Respondé SOLO con un array JSON. Sin texto, sin markdown, sin bloques de código.
-El PRIMER elemento es metadata: {"banco":"NombreDelBanco","total":N}
+El PRIMER elemento es metadata: {"banco":"NombreDelBanco","total":N,"saldoInicial":N,"saldoFinal":N}
 Los siguientes son transacciones en formato de 5 elementos:
 ["YYYY-MM-DD","descripcion completa",monto,"banco_contraparte_o_null","nombre_contraparte_o_null"]
 
 Reglas CRÍTICAS:
+- total: la cantidad de transacciones que tiene el extracto
+- saldoInicial y saldoFinal: los saldos que imprime el extracto, enteros en guaraníes (sin puntos, sin decimales). Si el extracto no los muestra, omití el campo: no los inventes
 - monto: positivo=ingreso, negativo=egreso. Solo números enteros, sin puntos ni comas
 - Fecha: convertir DD/MM/AAAA → YYYY-MM-DD
 - Campo [3] Banco contraparte: si la descripción menciona un banco, poner su ID (itau, ueno, continental, etc). Si no → null
 - Campo [4] Nombre contraparte: si hay nombre de persona o empresa en la descripción → extraerlo. Si no → null
-- NO incluyas saldo, encabezados, totales ni notas
+- La columna Saldo NO va en las filas: los saldos van solo en la metadata
+- NO incluyas encabezados, totales ni notas en las filas
 - Array vacío [] si no hay datos
 
 EJEMPLO:
-[{"banco":"Ueno","total":3},["2026-05-12","Tigo Pago Facturas",-97000,null,null],["2026-05-12","Transferencia Recibida de Clara Sosa",97000,"itau","Clara Sosa"]]`;
+[{"banco":"Ueno","total":3,"saldoInicial":150000,"saldoFinal":80000},["2026-05-12","Tigo Pago Facturas",-97000,null,null],["2026-05-12","Transferencia Recibida de Clara Sosa",97000,"itau","Clara Sosa"]]`;
 
 async function analizarUnaImagen(
   base64: string,
   mimeType: string,
   index: number,
-): Promise<{ items: PreviewItem[]; error?: string; index: number }> {
+): Promise<{ items: PreviewItem[]; error?: string; errorCarga?: CasoErrorCarga; index: number }> {
   try {
     const resp = await llamarAIProxy({
       contents: [{
@@ -104,14 +117,24 @@ async function analizarUnaImagen(
       },
     });
 
-    if (!resp.ok) return { items: [], error: `Error API ${resp.status}`, index };
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      return {
+        items: [],
+        error: `Error API (${resp.status}): ${errText.slice(0, 200)}`,
+        errorCarga: clasificarHTTP(resp.status, errText),
+        index,
+      };
+    }
 
     const data = await resp.json();
     const texto = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    if (!texto) return { items: [], error: 'Respuesta vacía', index };
+    if (!texto) return { items: [], error: 'Respuesta vacía', errorCarga: 'archivo_ilegible', index };
 
     const parsed = extraerJSONArray(texto);
-    if (!parsed) return { items: [], error: 'No se pudo parsear la respuesta', index };
+    if (!parsed) {
+      return { items: [], error: 'No se pudo parsear la respuesta', errorCarga: 'archivo_ilegible', index };
+    }
 
     const items = parsed
       .map(normalizeItem)
@@ -119,14 +142,22 @@ async function analizarUnaImagen(
 
     return { items, index };
   } catch (e: any) {
-    return { items: [], error: e?.message ?? 'Error', index };
+    return { items: [], error: e?.message ?? 'Error', errorCarga: clasificarExcepcion(e), index };
   }
 }
 
 async function analizarUnPDF(
   base64: string,
   mimeType: string,
-): Promise<{ items: PreviewItem[]; banco?: string; error?: string; totalEsperado?: number }> {
+): Promise<{
+  items: PreviewItem[];
+  banco?: string;
+  totalEsperado?: number;
+  saldoInicial?: number;
+  saldoFinal?: number;
+  error?: string;
+  errorCarga?: CasoErrorCarga;
+}> {
   try {
     const resp = await llamarAIProxy({
       contents: [{
@@ -144,12 +175,16 @@ async function analizarUnPDF(
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      return { items: [], error: `Error API (${resp.status}): ${errText.slice(0, 200)}` };
+      return {
+        items: [],
+        error: `Error API (${resp.status}): ${errText.slice(0, 200)}`,
+        errorCarga: clasificarHTTP(resp.status, errText),
+      };
     }
 
     const data = await resp.json();
     const texto = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    if (!texto) return { items: [], error: 'Respuesta vacía' };
+    if (!texto) return { items: [], error: 'Respuesta vacía', errorCarga: 'pdf_protegido' };
 
     if (__DEV__) {
       console.log('=== BATCH GEMINI RAW LENGTH ===', texto.length);
@@ -159,13 +194,24 @@ async function analizarUnPDF(
 
     let parsed = extraerJSONArray(texto);
     if (__DEV__) console.log('=== BATCH PARSED COUNT ===', parsed?.length);
-    if (!parsed) return { items: [], error: 'No se pudo parsear la respuesta' };
+    if (!parsed) {
+      return { items: [], error: 'No se pudo parsear la respuesta', errorCarga: 'archivo_ilegible' };
+    }
 
     let banco: string | undefined;
     let totalEsperado: number | undefined;
-    if (parsed.length > 0 && !Array.isArray(parsed[0]) && parsed[0]?.banco) {
-      banco = String(parsed[0].banco);
-      totalEsperado = typeof parsed[0].total === 'number' ? parsed[0].total : undefined;
+    let saldoInicial: number | undefined;
+    let saldoFinal: number | undefined;
+    const primero = parsed[0];
+    const esMetadata = primero !== null
+      && typeof primero === 'object'
+      && !Array.isArray(primero)
+      && ('banco' in primero || 'total' in primero || 'saldoInicial' in primero || 'saldo_inicial' in primero);
+    if (esMetadata) {
+      banco = primero.banco != null ? String(primero.banco) : undefined;
+      totalEsperado = numeroEntero(primero.total);
+      saldoInicial = numeroEntero(primero.saldoInicial ?? primero.saldo_inicial);
+      saldoFinal = numeroEntero(primero.saldoFinal ?? primero.saldo_final);
       parsed = parsed.slice(1);
     }
 
@@ -173,9 +219,9 @@ async function analizarUnPDF(
       .map(normalizeItem)
       .filter((x): x is PreviewItem => x !== null);
 
-    return { items, banco, totalEsperado };
+    return { items, banco, totalEsperado, saldoInicial, saldoFinal };
   } catch (e: any) {
-    return { items: [], error: e?.message ?? 'Error' };
+    return { items: [], error: e?.message ?? 'Error', errorCarga: clasificarExcepcion(e) };
   }
 }
 
@@ -188,9 +234,17 @@ export interface ArchivoInput {
 export interface BatchResult {
   items: PreviewItem[];
   banco?: string;
-  errores: { archivo: string; error: string }[];
+  errores: { archivo: string; error: string; caso?: CasoErrorCarga }[];
   totalArchivos: number;
   archivosOk: number;
+  archivos: {
+    nombre: string;
+    cantidadDeclarada?: number;
+    saldoInicial?: number;
+    saldoFinal?: number;
+    banco?: string;
+    items: PreviewItem[];
+  }[];
 }
 
 async function uriToBase64(uri: string): Promise<string> {
@@ -213,7 +267,8 @@ export async function procesarArchivosEnBatch(
   onProgreso?: (procesados: number, total: number) => void,
 ): Promise<BatchResult> {
   const CONCURRENCY = 4;
-  const errores: { archivo: string; error: string }[] = [];
+  const errores: { archivo: string; error: string; caso?: CasoErrorCarga }[] = [];
+  const archivosLeidos: BatchResult['archivos'] = [];
   let allItems: PreviewItem[] = [];
   let banco: string | undefined;
   let archivosOk = 0;
@@ -248,20 +303,32 @@ export async function procesarArchivosEnBatch(
       const nombre = lote[resultados.indexOf(res)]?.nombre ?? 'archivo';
 
       if (res.status === 'rejected') {
-        errores.push({ archivo: nombre, error: res.reason?.message ?? 'Error' });
+        errores.push({
+          archivo: nombre,
+          error: res.reason?.message ?? 'Error',
+          caso: clasificarExcepcion(res.reason),
+        });
         continue;
       }
 
       const val = res.value;
-      if (val.error && val.items.length === 0) {
-        errores.push({ archivo: nombre, error: val.error });
+      if (val.items.length === 0) {
+        if (val.errorCarga) {
+          errores.push({ archivo: nombre, error: val.error ?? 'Error', caso: val.errorCarga });
+        }
         continue;
       }
 
-      if (val.items.length > 0) {
-        allItems = [...allItems, ...val.items];
-        archivosOk++;
-      }
+      allItems = [...allItems, ...val.items];
+      archivosOk++;
+      archivosLeidos.push({
+        nombre,
+        cantidadDeclarada: 'totalEsperado' in val ? val.totalEsperado : undefined,
+        saldoInicial: 'saldoInicial' in val ? val.saldoInicial : undefined,
+        saldoFinal: 'saldoFinal' in val ? val.saldoFinal : undefined,
+        banco: 'banco' in val ? val.banco : undefined,
+        items: val.items,
+      });
 
       if (!banco && 'banco' in val && val.banco) {
         banco = val.banco;
@@ -281,13 +348,22 @@ export async function procesarArchivosEnBatch(
     errores,
     totalArchivos: archivos.length,
     archivosOk,
+    archivos: archivosLeidos,
   };
 }
 
 export async function procesarPDFdesdeURI(
   uri: string,
   mimeType = 'application/pdf',
-): Promise<{ items: PreviewItem[]; banco?: string; error?: string }> {
+): Promise<{
+  items: PreviewItem[];
+  banco?: string;
+  totalEsperado?: number;
+  saldoInicial?: number;
+  saldoFinal?: number;
+  error?: string;
+  errorCarga?: CasoErrorCarga;
+}> {
   const base64 = await uriToBase64(uri);
   return analizarUnPDF(base64, mimeType);
 }
@@ -295,8 +371,8 @@ export async function procesarPDFdesdeURI(
 export async function procesarImagenDesdeURI(
   uri: string,
   mimeType: string,
-): Promise<{ items: PreviewItem[]; error?: string }> {
+): Promise<{ items: PreviewItem[]; error?: string; errorCarga?: CasoErrorCarga }> {
   const base64 = await uriToBase64(uri);
   const res = await analizarUnaImagen(base64, mimeType, 0);
-  return { items: res.items, error: res.error };
+  return { items: res.items, error: res.error, errorCarga: res.errorCarga };
 }

@@ -1,10 +1,15 @@
 import {
+  agregarMovimientos,
   calcularEgresosPorDia,
   calcularGastosPorBanco,
   calcularNetoDia,
   calcularResumenMes,
   esComputable,
+  esVisible,
   construirSerie7Dias,
+  gastosPorCategoria,
+  gastosPorCategoriaMes,
+  totalEgresos,
   FilaMovimiento,
 } from '../services/totales';
 import { localDateKey, localLastDaysKeys, localMonthKey } from '../services/dateKeys';
@@ -14,6 +19,7 @@ function fila(parcial: Partial<FilaMovimiento> = {}): FilaMovimiento {
     monto: 0,
     fecha: '2026-10-05',
     esTraspaso: 0,
+    archivado: 0,
     bancoId: null,
     categoriaId: null,
     categoriaNombre: null,
@@ -197,6 +203,25 @@ describe('totales: transversales del resumen', () => {
       expect(Number.isInteger(c.total)).toBe(true);
       expect(c.total).toBeGreaterThan(0);
     }
+  });
+
+  it('T18: fila archivada no suma y los predicados la excluyen', () => {
+    const filas = [
+      fila({ monto: -100000, categoriaId: 'a', categoriaNombre: 'A' }),
+      fila({ monto: -900000, categoriaId: 'a', categoriaNombre: 'A', archivado: 1 }),
+      fila({ monto: 500000, archivado: 1 }),
+    ];
+    const r = calcularResumenMes(filas, MES, 6);
+    expect(r.egresos).toBe(100000);
+    expect(r.ingresos).toBe(0);
+    expect(r.topCategorias).toEqual([{ id: 'a', nombre: 'A', total: 100000 }]);
+    expect(esComputable({ esTraspaso: null })).toBe(true);
+    expect(esComputable({ esTraspaso: 0, archivado: 0 })).toBe(true);
+    expect(esComputable({ esTraspaso: 0, archivado: 1 })).toBe(false);
+    expect(esComputable({ esTraspaso: null, archivado: 1 })).toBe(false);
+    expect(esVisible({ archivado: 1 })).toBe(false);
+    expect(esVisible({ archivado: 0 })).toBe(true);
+    expect(esVisible({})).toBe(true);
   });
 });
 
@@ -444,5 +469,142 @@ describe('totales: serie de 7 dias', () => {
     const s = construirSerie7Dias([], new Date(2026, 9, 8), ETQ);
     expect(s).toHaveLength(7);
     expect(s.every((b) => b.total === 0)).toBe(true);
+  });
+});
+
+describe('totales: gastos por categoria', () => {
+  it('T19: suma solo egresos visibles y descarta ingresos, sin categoria y archivados', () => {
+    const filas = [
+      fila({ monto: -100000, categoriaId: 'super' }),
+      fila({ monto: -900000, categoriaId: 'super', archivado: 1 }),
+      fila({ monto: -50000, categoriaId: 'nafta' }),
+      fila({ monto: 300000, categoriaId: 'sueldo' }),
+      fila({ monto: -20000, categoriaId: null }),
+      fila({ monto: -30000, categoriaId: 'nafta', archivado: null }),
+    ];
+    expect(gastosPorCategoria(filas)).toEqual([
+      { categoriaId: 'super', total: 100000 },
+      { categoriaId: 'nafta', total: 80000 },
+    ]);
+  });
+
+  it('T19: orden total DESC y desempate categoriaId ASC', () => {
+    const filas = [
+      fila({ monto: -50000, categoriaId: 'z' }),
+      fila({ monto: -50000, categoriaId: 'b' }),
+      fila({ monto: -80000, categoriaId: 'm' }),
+    ];
+    expect(gastosPorCategoria(filas).map((g) => g.categoriaId)).toEqual(['m', 'b', 'z']);
+  });
+
+  it('T19: lista vacia o solo archivados da lista vacia', () => {
+    expect(gastosPorCategoria([])).toEqual([]);
+    expect(gastosPorCategoria([fila({ monto: -1000, categoriaId: 'a', archivado: 1 })])).toEqual([]);
+  });
+
+  it('T19: no muta la entrada', () => {
+    const filas = [fila({ monto: -1000, categoriaId: 'a' }), fila({ monto: 500 })];
+    const copia = JSON.parse(JSON.stringify(filas));
+    gastosPorCategoria(filas);
+    expect(filas).toEqual(copia);
+  });
+});
+
+describe('totales: gastos por categoria y mes', () => {
+  it('T20: agrupa por mes con storedDayKey y excluye archivados', () => {
+    const filas = [
+      fila({ monto: -100000, categoriaId: 'super', fecha: '2026-10-05' }),
+      fila({ monto: -40000, categoriaId: 'super', fecha: '2026-10-20T10:00:00' }),
+      fila({ monto: -30000, categoriaId: 'super', fecha: '2026-09-30' }),
+      fila({ monto: -700000, categoriaId: 'super', fecha: '2026-10-10', archivado: 1 }),
+      fila({ monto: 90000, categoriaId: 'super', fecha: '2026-10-11' }),
+    ];
+    expect(gastosPorCategoriaMes(filas)).toEqual([
+      { categoriaId: 'super', mes: '2026-09', total: 30000 },
+      { categoriaId: 'super', mes: '2026-10', total: 140000 },
+    ]);
+  });
+
+  it('T20: desempate por total y categoria dentro del mes', () => {
+    const filas = [
+      fila({ monto: -50000, categoriaId: 'z', fecha: '2026-10-01' }),
+      fila({ monto: -50000, categoriaId: 'b', fecha: '2026-10-02' }),
+      fila({ monto: -80000, categoriaId: 'm', fecha: '2026-10-03' }),
+    ];
+    expect(gastosPorCategoriaMes(filas).map((g) => g.categoriaId)).toEqual(['m', 'b', 'z']);
+  });
+});
+
+describe('totales: total de egresos', () => {
+  it('T21: suma egresos visibles en positivo y excluye archivados e ingresos', () => {
+    const filas = [
+      fila({ monto: -100000 }),
+      fila({ monto: -50000 }),
+      fila({ monto: -900000, archivado: 1 }),
+      fila({ monto: 300000 }),
+    ];
+    expect(totalEgresos(filas)).toBe(150000);
+    expect(Number.isInteger(totalEgresos(filas))).toBe(true);
+  });
+
+  it('T21: lista vacia o solo archivados da cero', () => {
+    expect(totalEgresos([])).toBe(0);
+    expect(totalEgresos([fila({ monto: -1000, archivado: 1 })])).toBe(0);
+  });
+});
+
+describe('totales: agregado de movimientos', () => {
+  const filas = [
+    fila({ monto: 500000, fecha: '2026-10-05', categoriaId: 'sueldo', bancoId: 'itau' }),
+    fila({ monto: -100000, fecha: '2026-10-05T09:30:00', categoriaId: 'super', bancoId: 'itau' }),
+    fila({ monto: -50000, fecha: '2026-10-06', categoriaId: 'super', bancoId: 'continental' }),
+    fila({ monto: -900000, fecha: '2026-10-05', categoriaId: 'super', bancoId: 'itau', archivado: 1 }),
+    fila({ monto: 250000, fecha: '2026-10-05', categoriaId: 'sueldo', bancoId: 'itau', archivado: 1 }),
+  ];
+
+  it('T22: ingresos, egresos y conteo solo de filas visibles', () => {
+    const r = agregarMovimientos(filas);
+    expect(r.ingresos).toBe(500000);
+    expect(r.egresos).toBe(150000);
+    expect(r.conteo).toBe(3);
+  });
+
+  it('T22: por categoria y por banco en valor absoluto y ordenados', () => {
+    const r = agregarMovimientos(filas);
+    expect(r.porCategoria).toEqual([
+      { id: 'sueldo', total: 500000 },
+      { id: 'super', total: 150000 },
+    ]);
+    expect(r.porBanco).toEqual([
+      { id: 'itau', total: 600000 },
+      { id: 'continental', total: 50000 },
+    ]);
+  });
+
+  it('T22: por dia solo egresos y dias con movimientos', () => {
+    const r = agregarMovimientos(filas);
+    expect(r.porDia).toEqual([
+      { fecha: '2026-10-05', egreso: 100000 },
+      { fecha: '2026-10-06', egreso: 50000 },
+    ]);
+    expect(r.diasConMovimientos).toBe(2);
+  });
+
+  it('T22: lista vacia da ceros y listas vacias', () => {
+    expect(agregarMovimientos([])).toEqual({
+      ingresos: 0,
+      egresos: 0,
+      conteo: 0,
+      porCategoria: [],
+      porBanco: [],
+      porDia: [],
+      diasConMovimientos: 0,
+    });
+  });
+
+  it('T22: no muta la entrada', () => {
+    const copia = JSON.parse(JSON.stringify(filas));
+    agregarMovimientos(filas);
+    expect(filas).toEqual(copia);
   });
 });

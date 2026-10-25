@@ -9,7 +9,7 @@ export type TipoCuenta = 'corriente' | 'ahorro' | 'billetera' | 'credito';
 
 export type TipoTransaccion = 'debito' | 'credito' | 'transferencia';
 
-export type FuenteCaptura = 'sms' | 'notificacion' | 'manual' | 'csv' | 'email';
+export type FuenteCaptura = 'sms' | 'notificacion' | 'manual' | 'csv' | 'email' | 'pdf' | 'foto';
 
 export type TipoIngreso = 'ingreso' | 'egreso' | 'mixto';
 
@@ -84,6 +84,9 @@ export interface Transaccion {
   cuentaParId?:  string | null; // FK → CuentaBancaria.id (la otra cuenta)
   contraparteBancoId?: string | null; // banco_id detectado por Gemini
   contraparteNombre?: string | null;  // Nombre de persona/empresa en descripción
+  archivado?:        number;
+  archivadoEn?:      string | null;
+  archivadoMotivo?:  string | null;
 }
 
 // ─── Regla de clasificación automática ──────────────────────────
