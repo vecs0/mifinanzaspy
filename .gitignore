@@ -35,3 +35,7 @@ expo-env.d.ts
 *.keystore
 !release.keystore.example
 .claude/worktrees/
+
+# Herramientas y agentes locales (no se versionan)
+.claude/
+.opencode/
