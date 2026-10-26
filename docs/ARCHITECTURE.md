@@ -1,5 +1,7 @@
 # ARQUITECTURA — MiFinanzasPY
 
+> Referencia consolidada: `docs/DOCUMENTACION.md`. Este archivo mantiene las reglas de tema, estilos, navegación y checklist pre-commit. Actualizado al 2026-10-25.
+
 App de finanzas personales para Paraguay. React Native / Expo SDK 54 + NativeWind v4 + SQLite. Offline-first, sin servidor.
 
 ---
@@ -34,7 +36,7 @@ finanzas-py/
 │   │   ├── reportes.tsx        # Reportes con graficos y PDF
 │   │   ├── crecer.tsx          # Metas de ahorro
 │   │   └── chat.tsx            # Asesor IA (Gemini chat)
-│   ├── onboarding/             # 4 pasos: Bienvenida → Perfil → Bancos → Permisos
+│   ├── onboarding/             # 5 pasos: Bienvenida → Perfil → Objetivos → Bancos → Permisos
 │   ├── banco/[id].tsx          # Detalle de banco con transacciones filtradas
 │   ├── transaccion/
 │   │   ├── [id].tsx            # Detalle de transaccion
@@ -45,7 +47,7 @@ finanzas-py/
 ├── components/
 │   ├── BankCard.tsx, BankChip.tsx, BankLogo.tsx
 │   ├── TransactionRow.tsx, QuickAddModal.tsx
-│   ├── HealthBar.tsx, AlertsList.tsx, BudgetProgress.tsx
+│   ├── HealthBar.tsx, AlertsList.tsx
 │   ├── SplashVideo.tsx, ErrorBoundary.tsx
 │   ├── CalendarPicker.tsx, CategoryManager.tsx
 │   ├── ArchivedSection.tsx    # Seccion "Datos archivados" de Ajustes
@@ -72,7 +74,7 @@ finanzas-py/
 │   ├── archivo.ts             # Reglas puras del archivado (par de traspaso, ajuste, orden, filtros)
 │   ├── duplicateDetector.ts   # Deteccion de duplicados
 │   ├── pdfReportService.ts    # Generacion PDF
-│   └── ... (budgets, metas, alerts, exchangeRate, etc.)
+│   └── ... (budgets, metas, alerts, reminders, backup, etc.)
 ├── theme/
 │   └── design-system.ts       # Todos los tokens: colors, colorsDark, fonts, spacing, borderRadius, typography, shadows
 ├── constants/
@@ -211,7 +213,7 @@ NativeWind v4 funciona en paralelo con los tokens. Usar Tailwind para layout, es
 - `transacciones` — movimientos financieros
 - `cuentas` — cuentas bancarias del usuario
 - `categorias` — categorias de gasto/ingreso
-- `bancos` — bancos disponibles
+- `metas` — metas de ahorro
 - `configuracion` — clave-valor (tema, perfil, etc.)
 - `chat_cache` — historial del chat IA
 - `presupuestos` — presupuestos por categoria
@@ -336,7 +338,7 @@ La pantalla es `components/comprobante/VerificationScreen.tsx` y se monta desde
 | ocrService.ts | OCR via Gemini para imagenes | `services/ocrService.ts` |
 | smsParser.ts | Parseo SMS por banco (regex) | `services/smsParser.ts` |
 | voiceInput.ts | Hook `useVoiceInput()` para dictado por voz | `services/voiceInput.ts` |
-| encryption.ts | Encriptacion XOR+base64 de campos sensibles | `services/encryption.ts` |
+| encryption.ts | Cifrado nacl.secretbox (XSalsa20-Poly1305) con clave en SecureStore; XOR solo legacy | `services/encryption.ts` |
 | validation.ts | Validacion de montos, descripciones, fechas | `services/validation.ts` |
 | traspasoDetector.ts | Deteccion de contrapartes y traspasos | `services/traspasoDetector.ts` |
 | transaccionValidator.ts | Validacion + merge de splits + duplicados | `services/transaccionValidator.ts` |
@@ -350,7 +352,7 @@ La pantalla es `components/comprobante/VerificationScreen.tsx` y se monta desde
 ## Que funciona / No funciona
 
 ### Funciona
-- Onboarding completo (4 pasos)
+- Onboarding completo (5 pasos)
 - Dashboard con saldo, cuentas, grafico 7d, gastos por banco, salud financiera, plan del asesor
 - QuickAddModal para egreso/ingreso/transferencia con voz
 - Historial con filtros por periodo/bancos/categorias
@@ -379,8 +381,6 @@ La pantalla es `components/comprobante/VerificationScreen.tsx` y se monta desde
 
 ### Placeholders / No implementado
 - Email Gmail OAuth: placeholder en settings (modal "proximamente")
-- Bloqueo biometrico: placeholder en settings
-- Cotizacion USD: `ExchangeRateCard.tsx` existe, puede necesitar ajustes
 
 ### Requiere EAS Build (no funciona en Expo Go ni dev)
 - Widget de saldo Android
@@ -392,14 +392,12 @@ La pantalla es `components/comprobante/VerificationScreen.tsx` y se monta desde
 
 ## Que NO tocar (a menos que sea necesario)
 
-1. **`store/useAppStore.ts`** — placeholder muerto, no se importa en ningun lado. Se puede eliminar pero no tocar.
-2. **`components/AnimatedSplash.tsx`** — no se usa (codigo muerto desde que se reemplazo el video splash).
-3. **`modules/`** — modulos nativos Kotlin. Solo tocar si se esta haciendo EAS Build y se necesita modificar el comportamiento nativo.
-4. **`workers/gemini-proxy.js`** — Cloudflare Worker. Solo tocar si se cambia el provider de IA o la URL del proxy.
-5. **`app/transaccion/settings.tsx.bak`** — backup viejo, se puede eliminar.
-6. **`app.config.js`** — solo resuelve `EXPO_PUBLIC_WORKER_URL` y `EXPO_PUBLIC_WORKER_APP_TOKEN`. Nunca exponer la key de Gemini al cliente.
-7. **`babel.config.js`** — config delicada con plugins de Reanimated y NativeWind. No modificar sin entender las interacciones.
-8. **`app.json`** — no hardcodear API key. Usar `app.config.js` + env vars.
+1. **`modules/`** — modulos nativos Kotlin. Solo tocar si se esta haciendo EAS Build y se necesita modificar el comportamiento nativo.
+2. **`workers/gemini-proxy.js`** — Cloudflare Worker. Solo tocar si se cambia el provider de IA o la URL del proxy.
+3. **`app.config.js`** — solo resuelve `EXPO_PUBLIC_WORKER_URL` y `EXPO_PUBLIC_WORKER_APP_TOKEN`. Nunca exponer la key de Gemini al cliente.
+4. **`babel.config.js`** — config delicada con plugins de Reanimated y NativeWind. No modificar sin entender las interacciones.
+5. **`app.json`** — no hardcodear API key. Usar `app.config.js` + env vars.
+6. **`android/`** — generado por `expo prebuild`; se regenera con `npx expo prebuild`, no se edita a mano.
 
 ---
 
@@ -446,7 +444,7 @@ Siempre revisar antes de hacer commit:
 ## comando a realizar para ejecutar en el emulador 
 - 1. Inicia el emulador (si no está corriendo):
 emulator -avd Pixel_10_Pro_XL
-- 2. Ejecuta la app apuntando al emulador: cd C:\finanzas-py
+- 2. Ejecuta la app apuntando al emulador: cd C:\Users\emman\Workspace\Code\mifinanzaspy
 npm run android -- --device Pixel_10_Pro_XL
 - 3. para pasar cualquier archivo al emulador: Abre una nueva terminal (la que tiene Expo corriendo no la cierres) y ejecuta:
 adb -s emulator-5554 push "C:\Users\emman\Downloads\movimientos-08_06_2026-23_06_2026.pdf" /sdcard/Download/
