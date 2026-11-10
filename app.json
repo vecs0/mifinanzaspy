@@ -49,6 +49,16 @@
       "expo-updates",
       "expo-secure-store",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#F5F1EB",
@@ -70,29 +80,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "supportedBanks": [
-        "itau",
-        "continental",
-        "gnb",
-        "sudameris",
-        "bnf",
-        "basa",
-        "atlas",
-        "familiar",
-        "bancop",
-        "interfisa",
-        "solar",
-        "regional",
-        "vision",
-        "ueno",
-        "zeta",
-        "citi",
-        "bna",
-        "bbrasil",
-        "tigo_money",
-        "personal_pay",
-        "pago_express"
-      ],
       "router": {},
       "eas": {
         "projectId": "be4592b1-3f74-4649-9782-2f8bd460f8b1"

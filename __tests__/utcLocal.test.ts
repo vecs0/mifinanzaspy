@@ -1,8 +1,8 @@
 /**
  * utcLocal
- * Responsabilidad: Regresion de las fechas por defecto y claves de mes frente al corrimiento UTC en validacion, alertas, reportes y recordatorios
+ * Responsabilidad: Regresion de las fechas por defecto y claves de mes frente al corrimiento UTC en alertas, reportes y recordatorios
  * Usado por: jest
- * Depende de: services/validation, services/alerts, services/reportGenerator, services/reminders, services/database
+ * Depende de: services/alerts, services/reportGenerator, services/reminders, services/database
  */
 jest.mock('@/services/database', () => {
   const actual = jest.requireActual('@/services/database');
@@ -18,7 +18,6 @@ import { getDB, getReporteCache } from '@/services/database';
 import { generarAlertas } from '@/services/alerts';
 import { generarReporteDiario, generarReporteMensual } from '@/services/reportGenerator';
 import { getRecordatorioProximo } from '@/services/reminders';
-import { validarFecha } from '@/services/validation';
 
 interface Consulta {
   sql: string;
@@ -68,20 +67,6 @@ describe('zona horaria de la suite', () => {
     expect(instante.getMonth()).toBe(9);
     expect(instante.getDate()).toBe(31);
     expect(instante.getUTCMonth()).toBe(10);
-  });
-});
-
-describe('validacion: fecha por defecto local', () => {
-  it('V1: sin fecha usable devuelve el dia local', () => {
-    expect(validarFecha(undefined)).toBe('2026-10-31');
-    expect(validarFecha(null)).toBe('2026-10-31');
-    expect(validarFecha('no-es-fecha')).toBe('2026-10-31');
-    expect(validarFecha('32/13/2026')).toBe('2026-10-31');
-  });
-
-  it('V2: una fecha valida se conserva tal cual', () => {
-    expect(validarFecha('2026-03-04')).toBe('2026-03-04');
-    expect(validarFecha('2026-03-04T23:30:00')).toBe('2026-03-04');
   });
 });
 

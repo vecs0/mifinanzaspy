@@ -85,15 +85,6 @@ function GripIcon({ color }: { color: string }) {
   );
 }
 
-function MailIcon({ color }: { color: string }) {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M4 6h16v12H4z" /><Path d="M4 6l8 7 8-7" />
-    </Svg>
-  );
-}
-
 function BellIcon({ color }: { color: string }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none"
@@ -411,7 +402,6 @@ function CapturaSection() {
   const C = useC();
   const [smsOn, setSmsOn] = useState(() => getConfig('captura_sms') === 'true');
   const [notifOn, setNotifOn] = useState(() => getConfig('captura_notif') === 'true');
-  const [showEmail, setShowEmail] = useState(false);
   const router = useRouter();
   return (
     <>
@@ -457,56 +447,7 @@ function CapturaSection() {
             thumbColor="#fff"
             onValueChange={v => { setNotifOn(v); setConfig('captura_notif', v ? 'true' : 'false'); }} />
         </View>
-        <View style={{ height: 1, backgroundColor: C.border, marginLeft: 14 }} />
-        <TouchableOpacity style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-        }} onPress={() => setShowEmail(true)} activeOpacity={0.7}>
-          <MailIcon color={C.muted} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: C.ink }}>Email Gmail OAuth</Text>
-            <Text style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>
-              Escaneá recibos y comprobantes desde tu correo
-            </Text>
-          </View>
-          <ArrowRight color={C.muted} />
-        </TouchableOpacity>
       </View>
-
-      <Modal visible={showEmail} transparent animationType="fade"
-        onRequestClose={() => setShowEmail(false)}>
-        <View style={{
-          flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end',
-        }}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowEmail(false)} />
-          <View style={{
-            backgroundColor: C.card, borderTopLeftRadius: br.xl, borderTopRightRadius: br.xl,
-            paddingTop: 24, paddingHorizontal: 22, paddingBottom: 36, gap: 16,
-          }}>
-            <View style={{
-              width: 36, height: 4, borderRadius: 2, backgroundColor: C.border,
-              alignSelf: 'center', marginBottom: 4,
-            }} />
-            <View style={{
-              width: 44, height: 44, borderRadius: 12, backgroundColor: `${C.accent}15`,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <MailIcon color={C.muted} />
-            </View>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: C.ink }}>Email Gmail OAuth</Text>
-            <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 20 }}>
-              Esta función estará disponible próximamente. Te permitirá escanear recibos y comprobantes directamente desde tu correo Gmail.
-            </Text>
-            <TouchableOpacity style={{
-              paddingVertical: 14, borderRadius: br.md,
-              backgroundColor: C.accent, alignItems: 'center',
-            }} onPress={() => setShowEmail(false)} activeOpacity={0.7}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: C.bg }}>
-                Entendido
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </>
   );
 }
