@@ -6,6 +6,9 @@
  */
 import { getRandomBytesAsync } from 'expo-crypto';
 import nacl from 'tweetnacl';
+import { registrarPRNGNacl } from './naclPrng';
+
+registrarPRNGNacl();
 
 const KEY_STORE = 'db_encryption_key';
 const V2_PREFIX = 'v2:';
