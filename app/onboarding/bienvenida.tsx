@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors, colorsDark, fonts } from '@/theme/design-system';
+import { SMS_HABILITADO } from '@/constants/features';
 
 
 function AppIcon({ size = 72 }: { size?: number }) {
@@ -40,7 +41,7 @@ function SvgIcon({ name, size = 18, color }: { name: string; size?: number; colo
 }
 
 const FEATURES = [
-  { key: 'sms',   label: 'Lectura automática de SMS bancarios' },
+  ...(SMS_HABILITADO ? [{ key: 'sms', label: 'Lectura automática de SMS bancarios' }] : []),
   { key: 'notif', label: 'Captura de notificaciones de apps' },
   { key: 'lock',  label: 'Todo se guarda en tu teléfono' },
 ];

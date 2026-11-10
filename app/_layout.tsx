@@ -23,6 +23,7 @@ import { ThemeProvider, ThemeContext } from '@/services/ThemeContext';
 import { initReminderChannel } from '@/services/reminders';
 import { clearDemoMetas } from '@/services/metas';
 import { consumirSalidaSolicitada } from '@/services/salidaApp';
+import { SMS_HABILITADO } from '@/constants/features';
 import { colors, colorsDark } from '@/theme/design-system';
 import SplashLogo from '@/components/SplashVideo';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -108,7 +109,7 @@ export default function RootLayout() {
               'bienvenida'
             );
           }
-          const capSMS = getConfig('captura_sms');
+          const capSMS = SMS_HABILITADO ? getConfig('captura_sms') : null;
           const capNotif = getConfig('captura_notif');
           if (capSMS === 'true') {
             iniciarEscuchaSMS();

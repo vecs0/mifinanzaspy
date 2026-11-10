@@ -18,6 +18,7 @@ import { getCuentas, deleteCuenta, updateCuentaToggle, actualizarOrdenCuenta, ge
 
 import { useThemeCtx, type ModoOscuro } from '@/services/ThemeContext';
 import { BANCO_POR_ID } from '@/constants/banks';
+import { SMS_HABILITADO } from '@/constants/features';
 import { BankLogo } from '@/components/BankLogo';
 import { BackupSection } from '@/components/BackupSection';
 import { ArchivedSection } from '@/components/ArchivedSection';
@@ -250,13 +251,15 @@ function CuentaCard({ cuenta, expandida, onToggle, onEliminar, drag, confirmando
           </View>
 
           <View style={{ flexDirection: 'row', gap: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 12, color: C.muted }}>SMS</Text>
-              <Switch value={cuenta.smsHabilitado}
-                trackColor={{ true: C.accent, false: C.border }}
-                thumbColor="#fff"
-                onValueChange={v => updateCuentaToggle(cuenta.id, 'sms_habilitado', v)} />
-            </View>
+            {SMS_HABILITADO && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 12, color: C.muted }}>SMS</Text>
+                <Switch value={cuenta.smsHabilitado}
+                  trackColor={{ true: C.accent, false: C.border }}
+                  thumbColor="#fff"
+                  onValueChange={v => updateCuentaToggle(cuenta.id, 'sms_habilitado', v)} />
+              </View>
+            )}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={{ fontSize: 12, color: C.muted }}>Notif</Text>
               <Switch value={cuenta.notifHabilitada}
@@ -421,21 +424,25 @@ function CapturaSection() {
         backgroundColor: C.card, borderRadius: br.lg, borderWidth: 1,
         borderColor: C.border, overflow: 'hidden', marginBottom: 20,
       }}>
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-        }}>
-          <SmartphoneIcon color={C.muted} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: C.ink }}>SMS bancarios</Text>
-            <Text style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>
-              Capturá transacciones de tus SMS
-            </Text>
-          </View>
-          <Switch value={smsOn} trackColor={{ true: C.accent, false: C.border }}
-            thumbColor="#fff"
-            onValueChange={v => { setSmsOn(v); setConfig('captura_sms', v ? 'true' : 'false'); }} />
-        </View>
-        <View style={{ height: 1, backgroundColor: C.border, marginLeft: 14 }} />
+        {SMS_HABILITADO && (
+          <>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+            }}>
+              <SmartphoneIcon color={C.muted} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: C.ink }}>SMS bancarios</Text>
+                <Text style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>
+                  Capturá transacciones de tus SMS
+                </Text>
+              </View>
+              <Switch value={smsOn} trackColor={{ true: C.accent, false: C.border }}
+                thumbColor="#fff"
+                onValueChange={v => { setSmsOn(v); setConfig('captura_sms', v ? 'true' : 'false'); }} />
+            </View>
+            <View style={{ height: 1, backgroundColor: C.border, marginLeft: 14 }} />
+          </>
+        )}
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
         }}>
@@ -561,7 +568,7 @@ function AppSection() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '500', color: C.ink }}>Privacidad</Text>
             <Text style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>
-              Permisos de SMS, notificaciones y más
+              Permisos de notificaciones y más
             </Text>
           </View>
           <ArrowRight color={C.muted} />

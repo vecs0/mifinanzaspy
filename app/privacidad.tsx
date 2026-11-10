@@ -16,6 +16,7 @@ import * as ExpoNotifications from 'expo-notifications';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark, borderRadius as br, iconStroke, hit } from '@/theme/design-system';
+import { SMS_HABILITADO } from '@/constants/features';
 
 type PermStatus = 'granted' | 'denied' | 'loading';
 
@@ -35,7 +36,9 @@ async function leerPermisos(): Promise<PermsState> {
     };
   }
   const [sms, notifStatus] = await Promise.all([
-    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS).catch(() => false),
+    SMS_HABILITADO
+      ? PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS).catch(() => false)
+      : false,
     ExpoNotifications.getPermissionsAsync().catch(() => ({ granted: false })),
   ]);
   return {
@@ -210,7 +213,7 @@ export default function PrivacidadScreen() {
     else refreshPerms();
   }
 
-  const allGood = perms.sms === 'granted' && perms.notif === 'granted';
+  const allGood = (SMS_HABILITADO ? perms.sms === 'granted' : true) && perms.notif === 'granted';
 
   return (
     <SafeAreaView style={s.container}>
@@ -242,40 +245,46 @@ export default function PrivacidadScreen() {
               stroke={t.positive} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <Path d="M20 6L9 17l-5-5" />
             </Svg>
-            <Text style={s.bannerTxt}>SMS e Internet activos · captura automática funcionando</Text>
+            <Text style={s.bannerTxt}>
+              {SMS_HABILITADO
+                ? 'SMS e Internet activos · captura automática funcionando'
+                : 'Notificaciones e Internet activos · captura automática funcionando'}
+            </Text>
           </View>
         )}
 
-        <View style={s.item}>
-          <View style={s.cardTop}>
-            <View style={s.icoBox}><SmsIcon color={t.accent} /></View>
-            <View style={s.rowTop}>
-              <Text style={s.permName}>Lectura de SMS</Text>
-              <StatusLabel status={perms.sms} t={t} />
+        {SMS_HABILITADO && (
+          <View style={s.item}>
+            <View style={s.cardTop}>
+              <View style={s.icoBox}><SmsIcon color={t.accent} /></View>
+              <View style={s.rowTop}>
+                <Text style={s.permName}>Lectura de SMS</Text>
+                <StatusLabel status={perms.sms} t={t} />
+              </View>
             </View>
+            {perms.sms === 'granted' ? (
+              <View style={s.pill}>
+                <CheckIcon color={t.positive} />
+                <Text style={s.pillTxt}>No requiere ninguna acción</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={s.permDesc}>
+                  Captura automáticamente los SMS bancarios para registrar tus movimientos al instante.
+                </Text>
+                {perms.sms === 'loading' ? null : perms.sms === 'denied' ? (
+                  <TouchableOpacity style={s.outlineBtn} onPress={() => Linking.openSettings()} activeOpacity={0.7}>
+                    <Text style={s.outlineBtnTxt}>Activar en ajustes del sistema</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={s.primaryBtn} onPress={handleSMS} activeOpacity={0.7}>
+                    <Text style={s.primaryBtnTxt}>Conceder permiso</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
-          {perms.sms === 'granted' ? (
-            <View style={s.pill}>
-              <CheckIcon color={t.positive} />
-              <Text style={s.pillTxt}>No requiere ninguna acción</Text>
-            </View>
-          ) : (
-            <>
-              <Text style={s.permDesc}>
-                Captura automáticamente los SMS bancarios para registrar tus movimientos al instante.
-              </Text>
-              {perms.sms === 'loading' ? null : perms.sms === 'denied' ? (
-                <TouchableOpacity style={s.outlineBtn} onPress={() => Linking.openSettings()} activeOpacity={0.7}>
-                  <Text style={s.outlineBtnTxt}>Activar en ajustes del sistema</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={s.primaryBtn} onPress={handleSMS} activeOpacity={0.7}>
-                  <Text style={s.primaryBtnTxt}>Conceder permiso</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
+        )}
 
         <View style={s.item}>
           <View style={s.cardTop}>

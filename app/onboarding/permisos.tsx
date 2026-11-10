@@ -1,6 +1,6 @@
 /**
  * onboarding/permisos.tsx
- * Responsabilidad: Paso final de onboarding — Solicitar permisos SMS/notificaciones
+ * Responsabilidad: Paso final de onboarding — Solicitar permisos de notificaciones
  * Usado por: expo-router (onboarding flow)
  * Depende de: database, smsService, notificationService
  */
@@ -19,6 +19,7 @@ import {
   isAccesoNotificacionesHabilitado, abrirAjustesNotificaciones,
 } from '@/services/notificationService';
 import { setOnboardingCompletado, setConfig, getOnboarding } from '@/services/database';
+import { SMS_HABILITADO } from '@/constants/features';
 import { colors, colorsDark, fonts, borderRadius as br } from '@/theme/design-system';
 
 
@@ -83,7 +84,7 @@ export default function PermisosScreen() {
   const router = useRouter();
   const esSettings = getOnboarding().completado;
   const [estados, setEstados] = useState<Record<string, EstadoPermiso>>({
-    sms: 'checking',
+    sms: SMS_HABILITADO ? 'checking' : 'denied',
     notif: 'checking',
     internet: 'granted',
   });
@@ -93,14 +94,16 @@ export default function PermisosScreen() {
 
   const verificarEstado = useCallback(async () => {
     if (Platform.OS !== 'android') {
-      setEstados({ sms: 'granted', notif: 'granted', internet: 'granted' });
+      setEstados({ sms: SMS_HABILITADO ? 'granted' : 'denied', notif: 'granted', internet: 'granted' });
       return;
     }
-    try {
-      const sms = await getPermisosLecturaSMS();
-      setEstados(prev => ({ ...prev, sms: sms.leer && sms.recibir ? 'granted' : 'denied' }));
-    } catch {
-      setEstados(prev => ({ ...prev, sms: prev.sms === 'checking' ? 'checking' : 'denied' }));
+    if (SMS_HABILITADO) {
+      try {
+        const sms = await getPermisosLecturaSMS();
+        setEstados(prev => ({ ...prev, sms: sms.leer && sms.recibir ? 'granted' : 'denied' }));
+      } catch {
+        setEstados(prev => ({ ...prev, sms: prev.sms === 'checking' ? 'checking' : 'denied' }));
+      }
     }
     try {
       const notif = await isAccesoNotificacionesHabilitado();
@@ -154,10 +157,10 @@ export default function PermisosScreen() {
     await setOnboardingCompletado({
       completado: true,
       bancosSeleccionados: [],
-      permisoSMS: estados.sms === 'granted',
+      permisoSMS: SMS_HABILITADO && estados.sms === 'granted',
       permisoNotif: estados.notif === 'granted',
     });
-    if (estados.sms === 'granted') setConfig('captura_sms', 'true');
+    if (SMS_HABILITADO && estados.sms === 'granted') setConfig('captura_sms', 'true');
     if (estados.notif === 'granted') setConfig('captura_notif', 'true');
     router.replace('/(tabs)');
   }
@@ -194,21 +197,23 @@ export default function PermisosScreen() {
           </Text>
 
           <View style={s.lista}>
-            <View style={s.permisoItem}>
-              <View style={s.iconWrap}><MessageIcon /></View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={s.permisoTitulo}>Lectura de SMS</Text>
-                  <EstadoBadge estado={estados.sms} checking={estados.sms === 'checking'} />
+            {SMS_HABILITADO && (
+              <View style={s.permisoItem}>
+                <View style={s.iconWrap}><MessageIcon /></View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={s.permisoTitulo}>Lectura de SMS</Text>
+                    <EstadoBadge estado={estados.sms} checking={estados.sms === 'checking'} />
+                  </View>
+                  <Text style={s.permisoDesc}>Capturá automáticamente los SMS bancarios para registrar tus movimientos al instante.</Text>
+                  {(estados.sms === 'denied') && (
+                    <TouchableOpacity style={s.accionBtn} onPress={() => handlePermiso('sms')} disabled={cargando === 'sms'} activeOpacity={0.7}>
+                      <Text style={s.accionBtnText}>{cargando === 'sms' ? 'Solicitando…' : 'Conceder permiso'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <Text style={s.permisoDesc}>Capturá automáticamente los SMS bancarios para registrar tus movimientos al instante.</Text>
-                {(estados.sms === 'denied') && (
-                  <TouchableOpacity style={s.accionBtn} onPress={() => handlePermiso('sms')} disabled={cargando === 'sms'} activeOpacity={0.7}>
-                    <Text style={s.accionBtnText}>{cargando === 'sms' ? 'Solicitando…' : 'Conceder permiso'}</Text>
-                  </TouchableOpacity>
-                )}
               </View>
-            </View>
+            )}
 
             <View style={s.permisoItem}>
               <View style={s.iconWrap}><BellIcon /></View>

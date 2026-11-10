@@ -10,10 +10,11 @@ import { Platform } from 'react-native';
 import { esSMSBancario, parsearSMS } from './smsParser';
 import { insertTransaccion, getCuentas, updateSaldoCuenta, insertarNotificacion } from './database';
 import { BANKS } from '@/constants/banks';
+import { SMS_HABILITADO } from '@/constants/features';
 
 
 let SmsReader: typeof import('../modules/sms-reader/src') | null = null;
-if (Platform.OS === 'android') {
+if (SMS_HABILITADO && Platform.OS === 'android') {
   try {
     SmsReader = require('../modules/sms-reader/src');
   } catch {
@@ -28,7 +29,7 @@ if (Platform.OS === 'android') {
  * Devuelve cuántos se importaron nuevos.
  */
 export async function importarHistorialSMS(): Promise<number> {
-  if (!SmsReader) return 0;
+  if (!SMS_HABILITADO || !SmsReader) return 0;
 
   let permisos: { leer: boolean; recibir: boolean };
   try {
@@ -98,7 +99,7 @@ let _smsSubscription: { remove: () => void } | null = null;
 export function iniciarEscuchaSMS(
   onNuevoMovimiento?: (cuentaId: string, monto: number) => void,
 ): void {
-  if (!SmsReader) return;
+  if (!SMS_HABILITADO || !SmsReader) return;
   if (_smsSubscription) return; // ya activo
 
   try {
@@ -151,6 +152,7 @@ export function detenerEscuchaSMS(): void {
 import { PermissionsAndroid } from 'react-native';
 
 export async function solicitarPermisosLecturaSMS(): Promise<boolean> {
+  if (!SMS_HABILITADO) return false;
   if (Platform.OS !== 'android') return true;
   try {
     const results = await PermissionsAndroid.requestMultiple([
@@ -166,6 +168,7 @@ export async function solicitarPermisosLecturaSMS(): Promise<boolean> {
 }
 
 export async function getPermisosLecturaSMS(): Promise<{ leer: boolean; recibir: boolean }> {
+  if (!SMS_HABILITADO) return { leer: false, recibir: false };
   if (Platform.OS !== 'android') return { leer: true, recibir: true };
   try {
     const leer = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);

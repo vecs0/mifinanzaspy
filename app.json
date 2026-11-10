@@ -32,8 +32,6 @@
         "backgroundColor": "#FFFFFF"
       },
       "permissions": [
-        "RECEIVE_SMS",
-        "READ_SMS",
         "POST_NOTIFICATIONS",
         "INTERNET",
         "android.permission.RECORD_AUDIO"
