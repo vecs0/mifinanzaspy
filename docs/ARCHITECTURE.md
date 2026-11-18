@@ -1,6 +1,6 @@
 # ARQUITECTURA — MiFinanzasPY
 
-> Referencia consolidada: `docs/DOCUMENTACION.md`. Este archivo mantiene las reglas de tema, estilos, navegación y checklist pre-commit. Actualizado al 2026-10-25.
+> Reglas de tema, estilos, navegación y checklist antes de commitear. Actualizado al 2026-10-25.
 
 App de finanzas personales para Paraguay. React Native / Expo SDK 54 + NativeWind v4 + SQLite. Offline-first, sin servidor.
 
@@ -92,7 +92,6 @@ finanzas-py/
 │   └── saldo-widget/          # Widget Android (Kotlin)
 ├── workers/                   # Cloudflare Worker (Gemini proxy)
 └── docs/
-    ├── roadmap.md
     └── ARCHITECTURE.md        # Este archivo
 ```
 

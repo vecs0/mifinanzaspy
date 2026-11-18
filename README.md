@@ -1,199 +1,209 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="Logo de MiFinanzasPY" width="120">
+
 # MiFinanzasPY
 
-App de finanzas personales para Paraguay. React Native 0.81 + Expo SDK 54, NativeWind v4 y SQLite. Offline-first, con un proxy minimo para IA (Cloudflare Worker).
+App Android de **finanzas personales para Paraguay**: gastos, ingresos, presupuestos y metas en guaraníes.
+**Offline-first**, sin cuentas ni servidor propio: los datos viven en el teléfono, en SQLite.
 
-- **Fecha de inicio del proyecto:** 23/05/2026 *(segun historial de archivos)*
-- **Plataforma objetivo:** Android (los modulos de SMS, notificaciones y widget son Kotlin, solo Android).
+[![Descargar APK](https://img.shields.io/badge/Descargar_APK-Android-2ea44f?style=for-the-badge&logo=android&logoColor=white)](https://github.com/vecs0/mifinanzaspy/releases/latest)
 
-## Funcionalidades principales
+![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react&logoColor=black)
+![Expo](https://img.shields.io/badge/Expo-SDK_54-000020?logo=expo&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white)
+![NativeWind](https://img.shields.io/badge/NativeWind-v4-06B6D4?logo=tailwindcss&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-proxy_IA-F38020?logo=cloudflare&logoColor=white)
+![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)
 
-Estas funcionan con datos locales, sin internet:
+<img src="docs/screenshots/panel.webp" alt="Panel principal de MiFinanzasPY" width="300">
 
-- **Registro de gastos e ingresos**: manual, con categorias (incluye categorias personalizadas) y cuentas por banco.
-- **Dashboard**: saldo consolidado, gasto mensual por banco y proyeccion de fin de mes (`calcularProyeccion` en `services/classifier.ts`).
-- **Historial**: busqueda y filtros por periodo, banco y categoria.
-- **Presupuestos** por categoria y mes, con barras de progreso.
-- **Metas de ahorro**.
-- **Reportes mensuales**: comparacion con el mes anterior, top de categorias y exportacion a PDF. El "insight" del reporte se calcula localmente; no usa IA.
-- Modo claro, oscuro o segun el sistema.
-- Catalogo de bancos y billeteras paraguayas (ver `constants/banks.ts`).
+</div>
 
-Requieren internet (usan el proxy de IA, ver [Privacidad](#privacidad)): asistente por chat, escaneo de comprobantes (foto/PDF) y extraccion de movimientos desde extractos.
+---
 
-## Roadmap / experimental
+## <img src="docs/icons/descargar.svg" width="22" align="top" alt=""> Descarga y demo
 
-Existe codigo para estas funciones, pero no estan validadas de extremo a extremo y se consideran en desarrollo. No las tomes como garantizadas:
+**[Descargar el APK para Android](https://github.com/vecs0/mifinanzaspy/releases/latest)**
 
-- Importacion automatica desde **SMS bancarios** (`services/smsService.ts`, modulo `modules/sms-reader`). Se activa solo si el usuario concede permisos y la captura esta habilitada.
-- Importacion desde **notificaciones** de apps bancarias (`services/notificationService.ts`, `modules/notification-reader`; requiere dar acceso a notificaciones en los ajustes de Android).
-- **Widget de saldo** para Android (`modules/saldo-widget`).
-- **Entrada por voz** (`expo-speech-recognition`, `services/voiceInput.ts`).
-- Recordatorios de pagos y notificaciones locales (recordatorio diario, reporte semanal).
-- Importacion CSV, deteccion de duplicados y de traspasos (funcionan, pero con heuristicas simples; ver [Decisiones tecnicas](#decisiones-tecnicas)).
-- Pendiente segun `docs/roadmap.md`: EAS Update (OTA), publicacion en Google Play.
+1. Descargá `MiFinanzasPY-v1.0.0-android.apk` desde **Releases** en el teléfono (Android 7 o superior, procesador ARM64).
+2. Abrilo y aceptá **Instalar apps de origen desconocido** si Android lo pide.
+3. Completá el onboarding: nombre, objetivos y bancos que usás.
 
-## Stack
+> El APK está firmado con una clave de desarrollo y no pasa por Google Play, por eso Android muestra un aviso al instalarlo.
 
-| Capa | Tecnologia |
-|------|------------|
-| Framework | React Native 0.81 + Expo SDK 54 (expo-router) |
-| Estilos | NativeWind v4 + tokens propios en `theme/design-system.ts` |
-| DB local | expo-sqlite (API sincrona), archivo `mifinanzaspy.db` |
-| Cifrado de campos | tweetnacl `secretbox` (XSalsa20-Poly1305), clave en expo-secure-store |
-| IA | Gemini 2.5 Flash, a traves de un Cloudflare Worker |
-| Cotizacion USD | API publica del BCP (`api.bcp.gov.py`) |
+El APK del Release ya viene conectado al Worker de demo, así que el asesor y el escaneo funcionan con conexión a internet, con un límite de pedidos por minuto. Si compilás la app vos, necesitás tu propio Worker: ver [Proxy de IA](#proxy-de-ia-cloudflare-worker). Sin Worker, la app funciona completa en modo local y el asesor aparece como "no configurado".
 
-## Requisitos
+## <img src="docs/icons/funcionalidades.svg" width="22" align="top" alt=""> Funcionalidades
 
-- Node.js 20+
-- Android SDK (para build nativo) o un build de desarrollo de EAS
-- Para las funciones de IA: un Cloudflare Worker desplegado con tu propia API key de Gemini (ver abajo)
+**Sin internet (todo local)**
+- **Registro rápido** de gastos e ingresos desde la barra de captura: texto libre como *"gasté 25 mil en almuerzo y 12 mil en uber"*, con dictado por voz y categoría sugerida por reglas que aprenden de tus correcciones.
+- **Cuentas por banco** con un catálogo de 21 bancos y billeteras paraguayas (Itaú, Ueno, Continental, Tigo Money, etc.).
+- **Panel** con saldo consolidado, neto del día, gráfica de los últimos 7 días, alertas y proyección de fin de mes.
+- **Historial** con búsqueda y filtros por período, banco y categoría, más archivado de movimientos.
+- **Presupuestos** por categoría y mes, con barras de progreso.
+- **Metas de ahorro** en la pestaña *Crecé*.
+- **Reportes mensuales**: comparación con el mes anterior, top de categorías y exportación a PDF.
+- **Traspasos entre cuentas propias**: se detectan y no inflan los totales de gasto.
+- **Detección de duplicados** con puntaje por monto, banco, descripción, cuenta y fecha.
+- **Recordatorios** de pagos con notificaciones locales.
+- **Copia de seguridad cifrada** (`.mfbk`) con contraseña del usuario, restore y exportación CSV.
+- **Widget de saldo** para la pantalla de inicio de Android.
+- Modo **claro, oscuro o según el sistema**.
 
-## Instalacion
+**Con internet (a través del proxy de IA)**
+- **Asesor IA** por chat, con el contexto financiero del mes.
+- **Escaneo de comprobantes** (foto) y **extracción de movimientos** de extractos en PDF o imagen, con verificación previa al guardar (cantidad, saldos y anomalías).
+
+## <img src="docs/icons/capturas.svg" width="22" align="top" alt=""> Capturas
+
+Capturas reales en un Samsung Galaxy A54, con datos ficticios.
+
+<div align="center">
+<img src="docs/screenshots/demo.gif" alt="Captura rápida por texto, reportes, metas e historial" width="280">
+</div>
+
+| Panel | Historial | Reportes |
+|---|---|---|
+| ![Panel](docs/screenshots/panel.webp) | ![Historial](docs/screenshots/historial.webp) | ![Reportes](docs/screenshots/reportes.webp) |
+| **Metas y presupuestos (Crecé)** | **Detalle de cuenta** | **Captura rápida por texto** |
+| ![Metas de ahorro y presupuestos](docs/screenshots/metas.webp) | ![Detalle de una cuenta](docs/screenshots/cuenta.webp) | ![Captura rápida](docs/screenshots/captura.webp) |
+| **Onboarding** | **Modo oscuro** | **Reportes en modo oscuro** |
+| ![Bienvenida del onboarding](docs/screenshots/onboarding.webp) | ![Panel en modo oscuro](docs/screenshots/panel-oscuro.webp) | ![Reportes en modo oscuro](docs/screenshots/reportes-oscuro.webp) |
+
+## <img src="docs/icons/arquitectura.svg" width="22" align="top" alt=""> Arquitectura
+
+```
+┌──────────────────────────────────────────────┐
+│  App Android · React Native + Expo Router    │
+│                                              │
+│  app/ (pantallas) ──► services/ (lógica)     │
+│                          │                   │
+│                          ▼                   │
+│            SQLite  mifinanzaspy.db           │      solo funciones de IA
+│   (descripciones cifradas con tweetnacl,     │  ─────────────────────────────┐
+│    clave en expo-secure-store)               │                               ▼
+└──────────────────────────────────────────────┘                ┌──────────────────────────┐
+                                                                │ Cloudflare Worker        │
+                                                                │ workers/gemini-proxy.js  │
+                                                                │ (secret GEMINI_API_KEY)  │──► API de Gemini
+                                                                └──────────────────────────┘
+```
+
+- **SQLite es la fuente de verdad.** No hay backend propio ni sincronización. Los montos se guardan como enteros en guaraníes: negativo es egreso y positivo es ingreso.
+- **La API key de Gemini nunca está en la app.** El cliente llama al Worker (`EXPO_PUBLIC_WORKER_URL`), que agrega la key, limita la cantidad de pedidos por minuto y reenvía a Gemini.
+- **La lógica financiera es pura y testeable:** totales, proyección (`services/classifier.ts`), detectores y verificación viven en `services/` sin depender de React.
+
+### Privacidad
+
+| Se queda en el teléfono | Sale al proxy de IA (solo si usás esas funciones) |
+|---|---|
+| Base de datos completa, clave de cifrado, reportes, presupuestos, metas, detectores, importación CSV | Chat del asesor con un resumen del mes, y la foto o el PDF que se escanea |
+
+Solo se cifran los campos de texto libre de cada movimiento (descripción y texto original). Montos, fechas y categorías se guardan en claro en SQLite.
+
+## <img src="docs/icons/tecnologias.svg" width="22" align="top" alt=""> Tecnologías
+
+| Capa | Tecnologías |
+|---|---|
+| **App** | React Native 0.81, Expo SDK 54, Expo Router 6, TypeScript |
+| **Estilos** | NativeWind v4 (Tailwind) y design tokens propios en `theme/design-system.ts` |
+| **Datos** | expo-sqlite, expo-secure-store |
+| **Cifrado** | tweetnacl (XSalsa20-Poly1305); PBKDF2-HMAC-SHA512 para las copias de seguridad |
+| **Nativo** | Módulos Kotlin propios: widget de saldo, lector de notificaciones y lector de SMS |
+| **IA** | Gemini a través de un Cloudflare Worker |
+| **Calidad** | Jest, ESLint y GitHub Actions (lint, typecheck y tests en cada push) |
+
+## <img src="docs/icons/estructura.svg" width="22" align="top" alt=""> Estructura
+
+```
+mifinanzaspy/
+├── app/                    # Pantallas (Expo Router)
+│   ├── (tabs)/             # Panel, Historial, Reportes, Crecé y Asesor IA
+│   ├── onboarding/         # Bienvenida, perfil, objetivos, bancos y permisos
+│   └── ...                 # Comprobante, presupuestos, recordatorios, duplicados, privacidad
+├── components/             # Componentes reutilizables
+├── services/               # Lógica: base de datos, cifrado, backup, detectores, reportes, IA
+├── constants/              # Bancos, categorías y flags de funcionalidades
+├── modules/                # Módulos nativos Android en Kotlin
+├── theme/                  # Design system y tokens
+├── workers/                # Cloudflare Worker (proxy de Gemini)
+├── __tests__/              # Pruebas con Jest
+├── android/                # Proyecto nativo generado con expo prebuild
+└── docs/                   # Arquitectura, capturas e íconos
+```
+
+## <img src="docs/icons/local.svg" width="22" align="top" alt=""> Correr en local
+
+**Requisitos:** Node.js 20+, JDK 17 y Android SDK, con un teléfono por USB o un emulador.
 
 ```bash
 git clone https://github.com/vecs0/mifinanzaspy.git
 cd mifinanzaspy
 npm install
-npm run start
+cp .env.example .env.local      # completar EXPO_PUBLIC_WORKER_URL (opcional)
+npm run android
 ```
 
-La app incluye modulos nativos propios (SMS, notificaciones, widget), por lo que requiere un development build; no corre completa en Expo Go.
+La app usa módulos nativos propios, así que necesita un development build y no corre en Expo Go.
+
+| Acción | Comando |
+|---|---|
+| Servidor de desarrollo | `npm run start` |
+| Build e instalación en Android | `npm run android` |
+| APK release | `cd android && ./gradlew assembleRelease` |
+| Lint | `npm run lint` |
+| Typecheck | `npx tsc --noEmit` |
 
 ### Proxy de IA (Cloudflare Worker)
 
-El codigo del Worker esta en `workers/gemini-proxy.js`. La API key de Gemini vive solo en el Worker, nunca en la app.
+1. Crear un Worker en Cloudflare con `workers/gemini-proxy.js` (la config está en `workers/wrangler.toml`).
+2. Cargar el secret `GEMINI_API_KEY` con tu key de Gemini y, si querés, `APP_TOKEN`.
+3. Poner la URL del Worker en `EXPO_PUBLIC_WORKER_URL` dentro de `.env.local`.
 
-1. Crear un Worker en Cloudflare y pegar el contenido de `workers/gemini-proxy.js`.
-2. Configurar el secret `GEMINI_API_KEY` con tu key de Gemini.
-3. Configurar la variable `GEMINI_MODEL` con el modelo a usar (por defecto `gemini-3.5-flash-lite`; ya viene en `workers/wrangler.toml`).
-4. Apuntar la app al Worker con la variable `EXPO_PUBLIC_WORKER_URL` (se lee en `app.config.js` como `extra.workerUrl`).
+No pongas la API key en `.env.local` ni en ninguna variable `EXPO_PUBLIC_*`, porque esas variables quedan dentro del bundle de la app.
 
-No pongas la API key en `.env.local` ni en variables `EXPO_PUBLIC_*`: esas variables se incluyen en el bundle de la app.
-
-## Build
+## <img src="docs/icons/pruebas.svg" width="22" align="top" alt=""> Pruebas
 
 ```bash
-npm run android                                          # build local
-eas build --profile development --platform android      # development build
-eas build --profile preview --platform android          # APK de prueba
+npm run test
 ```
 
-## Descarga del APK
+Hay 21 suites con 428 pruebas: totales y traspasos, fechas en calendario local, cifrado, backup y restore, detectores de duplicados y traspasos, captura por texto, verificación de extractos, errores de IA y navegación.
 
-> **TODO:** publicar el APK en GitHub Releases y enlazarlo aqui.
->
-> Pasos: generar el APK con `eas build --profile preview --platform android`, descargarlo desde EAS, crear un Release en GitHub con su tag de version y adjuntar el `.apk`.
->
-> Enlace: _pendiente_
+## <img src="docs/icons/seguridad.svg" width="22" align="top" alt=""> Notas de seguridad
 
-## Screenshots
+- La key de Gemini vive solo como secret del Worker. `APP_TOKEN` es un disuasivo opcional, no una credencial: viaja dentro del bundle.
+- La copia de seguridad es zero-knowledge: la contraseña no se guarda, y si se pierde la copia no se puede recuperar. Derivar la clave con PBKDF2 (100.000 iteraciones) tarda entre uno y dos minutos en un teléfono de gama media.
+- La lectura de SMS bancarios está en el código, pero desactivada en esta versión (`SMS_HABILITADO` en `constants/features.ts`).
 
-> **TODO:** no hay capturas todavia. Agregar imagenes en `docs/media/` y referenciarlas aqui, por ejemplo:
->
-> ```md
-> ![Dashboard](docs/media/dashboard.png)
-> ![Historial](docs/media/historial.png)
-> ![Reportes](docs/media/reportes.png)
-> ```
+## <img src="docs/icons/versiones.svg" width="22" align="top" alt=""> Versiones
 
-## Video / GIF demostrativo
+| Versión | Fecha | Cambios |
+|---|---|---|
+| **v1.0.0** | Noviembre 2026 | Primera versión pública: registro y captura rápida, panel, historial, presupuestos, metas, reportes PDF, backup cifrado, widget, asesor IA por Worker y targetSdk 36 |
 
-> **TODO:** no hay video todavia. Guardarlo como `docs/media/demo.gif` (o enlazar un video).
->
-> Como grabarlo (30 a 60 segundos):
-> 1. Con la app corriendo en un dispositivo o emulador Android, grabar la pantalla (por ejemplo `adb shell screenrecord /sdcard/demo.mp4`, maximo 3 minutos, luego `adb pull /sdcard/demo.mp4`).
-> 2. Mostrar un flujo corto: onboarding o dashboard, registrar un gasto, ver historial y un reporte.
-> 3. Convertir a GIF con ffmpeg, por ejemplo: `ffmpeg -i demo.mp4 -vf "fps=12,scale=360:-1" docs/media/demo.gif`.
-> 4. Usar datos de prueba, sin informacion bancaria real.
+## <img src="docs/icons/autor.svg" width="22" align="top" alt=""> Autor
 
-## Decisiones tecnicas
+<table>
+  <tr>
+    <td><img src="https://github.com/vecs0.png" width="80" alt="Foto de perfil de vecs0"></td>
+    <td>
+      <strong>Victor Emmanuel Cabrera Sosa</strong><br>
+      <a href="https://github.com/vecs0">vecs0 · github.com/vecs0</a>
+    </td>
+  </tr>
+</table>
 
-### Por que SQLite
+## <img src="docs/icons/licencia.svg" width="22" align="top" alt=""> Licencia
 
-La app es de un solo usuario y un solo dispositivo, con datos relacionales (cuentas, transacciones, categorias, presupuestos, metas). SQLite local (`expo-sqlite`) da consultas rapidas, funciona sin conexion y no requiere cuenta ni servidor propio. Los montos se guardan como enteros en guaranies (negativo = egreso, positivo = ingreso). Sincronizacion multi-dispositivo o backup remoto quedaron fuera de alcance (ver `docs/ARCHITECTURE.md`).
+Distribuido bajo la licencia **MIT**. Consultá el archivo [LICENSE](LICENSE) para el texto completo.
 
-### Cifrado local con tweetnacl
+| Permisos | Condiciones | Limitaciones |
+|---|---|---|
+| ✔ Uso comercial<br>✔ Modificación<br>✔ Distribución<br>✔ Uso privado | Incluir el aviso de copyright y la licencia | ✖ Sin garantía<br>✖ Sin responsabilidad |
 
-Los campos `descripcion` y `sms_raw` de cada transaccion se cifran antes de guardarse (`services/encryption.ts`):
+**Contenido de terceros:** React Native, Expo, tweetnacl y las demás dependencias se distribuyen bajo sus propias licencias de código abierto. Las fuentes de `assets/fonts/` (Newsreader, Geist y Geist Mono) tienen la licencia SIL Open Font License. Los nombres y logos de los bancos pertenecen a sus respectivas entidades y se usan solo para identificarlas.
 
-- Algoritmo: `nacl.secretbox` (XSalsa20-Poly1305), con nonce aleatorio de 24 bytes por valor. El valor guardado lleva prefijo `v2:` y es base64 de nonce + texto cifrado.
-- Clave: 32 bytes aleatorios generados en el primer uso y guardados en `expo-secure-store` (Keystore de Android).
-- Se eligio tweetnacl porque es una libreria JavaScript pura, pequena y ampliamente usada, sin depender de un modulo nativo adicional.
-- Compatibilidad: valores antiguos cifrados con XOR se siguen leyendo. Si fallara el cifrado v2, el codigo vuelve a XOR como respaldo.
-
-Alcance y limites: solo se cifran esos dos campos. Montos, fechas, categorias, saldos, nombres de cuentas, metas y presupuestos se guardan en claro en SQLite. El cifrado protege el texto de las descripciones y los SMS originales de lecturas del archivo de base de datos; no es una base completa cifrada.
-
-### Deteccion de duplicados
-
-`services/duplicateDetector.ts` compara todos los pares de transacciones (complejidad cuadratica) y suma puntaje:
-
-| Condicion | Puntos |
-|-----------|--------|
-| Mismo monto absoluto | 40 |
-| Mismo banco | 20 |
-| Misma descripcion (sin distinguir mayusculas) | 20 |
-| Misma cuenta | 10 |
-| Fechas a menos de 24 horas | 10 |
-
-Un par se propone como posible duplicado si el puntaje es **>= 50**, y la lista se ordena por puntaje descendente. El usuario revisa cada par en la pantalla `duplicados`. Nota: el umbral se alcanza con solo monto y banco iguales (60), sin importar la fecha. Ademas, en la importacion por lote (`batchImportService.ts`) se descartan items con igual fecha, monto y descripcion exactos.
-
-### Deteccion de traspasos entre cuentas
-
-`services/traspasoDetector.ts` se ejecuta al procesar movimientos del flujo de comprobantes (`app/comprobante.tsx`). Es un conjunto de reglas con expresiones regulares, sin IA en esta etapa:
-
-1. Busca en la descripcion el nombre de otro banco (patrones para 21 bancos y billeteras), ignorando el banco del propio extracto.
-2. Es traspaso si la descripcion coincide con una frase de "cuenta propia" (por ejemplo "transferencia a mi cuenta", "traspaso propio", "mis cuentas"), o si menciona un banco donde el usuario tiene una cuenta y no se detecta nombre de un tercero.
-3. Confianza: **alta** si es traspaso y el usuario tiene cuenta en el banco contraparte (se asigna `cuentaParId`); **media** si es traspaso sin cuenta encontrada, o si solo se detecto un banco; **baja** en los demas casos.
-
-Es una heuristica: no empareja por monto y fecha con el movimiento opuesto en la otra cuenta, y puede fallar con descripciones inusuales.
-
-### Copia de seguridad cifrada (zero-knowledge)
-
-Ajustes > Copia de seguridad exporta un archivo `.mfbk` que se cifra en el dispositivo con una contrasena que solo conoce el usuario. La app no guarda la contrasena ni la clave derivada: si se pierde, la copia no se puede recuperar.
-
-- Contenido: cuentas, transacciones (descripcion y SMS descifrados dentro del payload, que se cifra completo), categorias, categorias ocultas, reglas, presupuestos, recordatorios, metas y configuracion. Al restaurar, los campos sensibles se vuelven a cifrar con la clave local del dispositivo.
-- Cifrado: `nacl.secretbox` (XSalsa20-Poly1305) con nonce aleatorio. La cabecera guarda version de formato, iteraciones y salt de 16 bytes.
-- Derivacion de clave: PBKDF2-HMAC-SHA512 implementado sobre `nacl.hash`, porque tweetnacl no trae KDF. Por defecto 100000 iteraciones. En Node 100000 iteraciones tardan alrededor de 1,2 s; en Hermes se espera entre 10 y 30 veces mas (sin medir en dispositivo), por lo que el export y el restore pueden tardar varios segundos y la UI muestra estado de carga. Mas iteraciones encarecen los ataques de fuerza bruta contra contrasenas debiles pero alargan la espera. El numero de iteraciones viaja en el archivo (entre 1000 y 2000000), asi que se puede subir o bajar en versiones futuras sin romper copias viejas. Se recomienda una contrasena larga.
-- Restore: valida version y esquema antes de tocar datos, corre dentro de una transaccion SQLite (si falla se revierte todo) y ofrece Reemplazar (borra y deja el contenido de la copia) o Combinar (omite duplicados por id y por hash de verificacion, y ajusta el saldo de cuentas existentes con las transacciones nuevas). Una contrasena incorrecta o un archivo alterado falla sin modificar nada.
-- CSV: exporta las transacciones con descripciones en texto plano para planillas. No esta cifrado; neutraliza celdas que empiezan con `=`, `+`, `-` o `@`.
-## Privacidad
-
-Que **no sale del telefono**:
-
-- Toda la base de datos SQLite: transacciones, cuentas, saldos, presupuestos, metas, recordatorios, historial de chat y configuracion.
-- La clave de cifrado (queda en el almacen seguro del dispositivo).
-- El contenido de los SMS y de las notificaciones bancarias: se leen y se parsean en el dispositivo (modulos Kotlin + `smsParser.ts`) y se guardan localmente. No se envian a ningun servidor.
-- Los reportes, el dashboard, el detector de duplicados y el detector de traspasos se calculan localmente.
-
-Que **si se envia** al proxy de IA (Cloudflare Worker, que reenvia a la API de Gemini de Google), solo cuando el usuario usa esas funciones:
-
-- **Chat con el asistente**: el historial de la conversacion mas un contexto generado por la app con la fecha, saldo total, cuentas (alias, banco, saldo), ingresos y egresos del mes, porcentaje gastado, proyeccion de fin de mes, top de categorias y las ultimas 10 transacciones (fecha, monto, categoria, descripcion, banco).
-- **Escaneo de comprobantes e importacion** (foto, imagen o PDF de extracto): el archivo completo, codificado en base64, junto con el prompt de extraccion.
-- La importacion de CSV se parsea en el dispositivo y no se envia.
-- Tambien se consulta la API publica del BCP para la cotizacion del dolar; esa peticion no lleva datos del usuario.
-
-Estado actual de los envios: todas las funciones de IA (chat, comprobantes, extractos PDF y OCR, e importacion por lote) pasan por el Worker a traves de `services/apiConfig.ts`; el CSV se parsea en el dispositivo. El cliente no contiene ninguna API key.
-
-El Worker reenvia el cuerpo de la peticion a Google sin guardarlo (el codigo no escribe logs ni almacenamiento propio), pero queda sujeto a la politica de tratamiento de datos de Google para la API de Gemini y a los registros que tu cuenta de Cloudflare genere. Si no queres que tus datos salgan del telefono, no uses el chat ni el escaneo.
-
-## Estructura
-
-```
-app/                  # Pantallas (Expo Router)
-  (tabs)/             # Dashboard, Historial, Reportes, Chat, Crecer (metas)
-  onboarding/         # Primera configuracion
-  ...                 # presupuestos, comprobante, duplicados, recordatorios, etc.
-components/           # Componentes reutilizables
-services/             # Logica de negocio (database, encryption, classifier, detectores, etc.)
-modules/              # Modulos nativos Android (Kotlin): sms-reader, notification-reader, saldo-widget
-workers/              # Cloudflare Worker (proxy de Gemini)
-theme/                # Design system y tokens
-docs/                 # Arquitectura y roadmap
-```
-
-Mas detalle en `docs/ARCHITECTURE.md` y `docs/roadmap.md`.
-
-## Licencia
-
-MIT. Ver [LICENSE](LICENSE).
+© 2026 Victor Emmanuel Cabrera Sosa
