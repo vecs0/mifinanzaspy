@@ -17,7 +17,7 @@ App Android de **finanzas personales para Paraguay**: gastos, ingresos, presupue
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-proxy_IA-F38020?logo=cloudflare&logoColor=white)
 ![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)
 
-<img src="docs/screenshots/panel.webp" alt="Panel principal de MiFinanzasPY" width="300">
+<img src="docs/screenshots/splash.webp" alt="Pantalla de inicio de MiFinanzasPY" width="300">
 
 </div>
 
