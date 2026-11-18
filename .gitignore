@@ -34,8 +34,21 @@ expo-env.d.ts
 # debug keystore
 *.keystore
 !release.keystore.example
-.claude/worktrees/
 
-# Herramientas y agentes locales (no se versionan)
+# Herramientas de IA y documentos internos (solo locales, no se versionan)
 .claude/
 .opencode/
+.agents/
+.mcp.json
+opencode.json
+CLAUDE.md
+AGENTS.md
+MEMORY.md
+specs/
+docs/constitution.md
+docs/sdd-kit/
+docs/CONTEXTO.md
+docs/OPERACIONES-IA.md
+docs/_archivo/
+docs/MiFinanzasPY plan*
+scripts/run-android-usb.ps1
