@@ -66,7 +66,7 @@ El codigo del Worker esta en `workers/gemini-proxy.js`. La API key de Gemini viv
 
 1. Crear un Worker en Cloudflare y pegar el contenido de `workers/gemini-proxy.js`.
 2. Configurar el secret `GEMINI_API_KEY` con tu key de Gemini.
-3. Configurar la variable `GEMINI_MODEL` con el modelo a usar (por ejemplo `gemini-2.5-flash`).
+3. Configurar la variable `GEMINI_MODEL` con el modelo a usar (por defecto `gemini-3.5-flash-lite`; ya viene en `workers/wrangler.toml`).
 4. Apuntar la app al Worker con la variable `EXPO_PUBLIC_WORKER_URL` (se lee en `app.config.js` como `extra.workerUrl`).
 
 No pongas la API key en `.env.local` ni en variables `EXPO_PUBLIC_*`: esas variables se incluyen en el bundle de la app.

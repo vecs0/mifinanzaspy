@@ -167,7 +167,6 @@ export async function parseCSVtoPreview(uri: string): Promise<{
   }
 }
 
-const PREFILL_ARR = '[{"monto":';
 export async function parseOCRtoPreview(base64: string, mimeType: string): Promise<{
   items: PreviewItem[];
   error?: string;
@@ -191,10 +190,6 @@ Ejemplo: [{"monto":-50000,"descripcion":"Supermercado","fecha":"2026-05-29"}]` }
             { inlineData: { mimeType, data: base64 } },
           ],
         },
-        {
-          role: 'model',
-          parts: [{ text: PREFILL_ARR }],
-        },
       ],
       generationConfig: { maxOutputTokens: 1024 },
     });
@@ -210,9 +205,8 @@ Ejemplo: [{"monto":-50000,"descripcion":"Supermercado","fecha":"2026-05-29"}]` }
 
     const data = await resp.json();
     const candidates = data.candidates ?? data.result?.candidates ?? [];
-    let texto = candidates[0]?.content?.parts?.[0]?.text ?? '';
+    const texto: string = candidates[0]?.content?.parts?.[0]?.text ?? '';
     if (!texto) return { items: [], error: 'Respuesta vacía de la IA', errorCarga: 'archivo_ilegible' };
-    texto = PREFILL_ARR + texto;
 
     let parsed = extraerJSONArray(texto);
     if (!parsed) {

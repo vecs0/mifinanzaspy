@@ -56,7 +56,6 @@ function extraerJSON(texto: string): any {
 }
 
 export async function escanearComprobante(base64: string, mimeType?: string): Promise<OcrResultado> {
-  const PREFILL = '{"monto":';
   const body = {
     contents: [
       {
@@ -79,10 +78,6 @@ Nada de texto extra, solo el JSON.` },
           { inlineData: { mimeType: mimeType ?? 'image/jpeg', data: base64 } },
         ],
       },
-      {
-        role: 'model',
-        parts: [{ text: PREFILL }],
-      },
     ],
     generationConfig: { maxOutputTokens: 300 },
   };
@@ -102,8 +97,7 @@ Nada de texto extra, solo el JSON.` },
 
     const data = await resp.json();
     const candidates = data.candidates ?? data.result?.candidates ?? [];
-    let texto = candidates[0]?.content?.parts?.[0]?.text ?? '';
-    texto = PREFILL + texto;
+    const texto: string = candidates[0]?.content?.parts?.[0]?.text ?? '';
 
     if (!texto) return { descripcion: '', error: 'Respuesta vacía de la IA', errorCarga: 'archivo_ilegible' };
 

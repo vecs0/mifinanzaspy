@@ -12,7 +12,7 @@
  */
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 const hits = new Map();
 
 function cors(env) {
