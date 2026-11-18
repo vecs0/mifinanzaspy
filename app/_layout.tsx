@@ -78,11 +78,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function arrancar() {
+      if (!__DEV__) {
+        Updates.checkForUpdateAsync()
+          .then(update => { if (update.isAvailable) setUpdateBanner(true); })
+          .catch(e => console.warn('[_layout] No se pudo buscar actualizaciones:', e));
+      }
       try {
-        if (!__DEV__) {
-          const update = await Updates.checkForUpdateAsync();
-          if (update.isAvailable) setUpdateBanner(true);
-        }
         const onboarding = getOnboarding();
         const listo = onboarding.completado;
         if (!listo) {

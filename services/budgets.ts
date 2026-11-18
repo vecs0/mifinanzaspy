@@ -15,9 +15,25 @@ export interface Presupuesto {
   mes: string;
 }
 
-export interface PresupuestoConGasto extends Presupuesto {
-  gastado: number;
+export interface EstadoPresupuesto {
   pct: number;
+  excedido: boolean;
+  restante: number;
+  exceso: number;
+}
+
+export interface PresupuestoConGasto extends Presupuesto, EstadoPresupuesto {
+  gastado: number;
+}
+
+export function estadoPresupuesto(gastado: number, montoLimite: number): EstadoPresupuesto {
+  const pct = montoLimite > 0 ? Math.round((gastado / montoLimite) * 100) : 0;
+  return {
+    pct,
+    excedido: montoLimite > 0 && gastado > montoLimite,
+    restante: Math.max(0, montoLimite - gastado),
+    exceso: montoLimite > 0 ? Math.max(0, gastado - montoLimite) : 0,
+  };
 }
 
 function ensureTable(): void {
@@ -60,11 +76,10 @@ export function getPresupuestosConGasto(mes: string): PresupuestoConGasto[] {
     if (g.mes === mes) gastoMap[g.categoriaId] = g.total;
   }
 
-  return presupuestos.map(p => ({
-    ...p,
-    gastado: gastoMap[p.categoriaId] ?? 0,
-    pct: p.montoLimite > 0 ? Math.min(100, Math.round(((gastoMap[p.categoriaId] ?? 0) / p.montoLimite) * 100)) : 0,
-  }));
+  return presupuestos.map(p => {
+    const gastado = gastoMap[p.categoriaId] ?? 0;
+    return { ...p, gastado, ...estadoPresupuesto(gastado, p.montoLimite) };
+  });
 }
 
 export function setPresupuesto(categoriaId: string, montoLimite: number, mes: string): void {

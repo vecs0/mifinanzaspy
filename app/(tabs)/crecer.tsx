@@ -619,14 +619,14 @@ function PresupuestosList({ presupuestos, t }: {
       {items.map(p => {
         const cat      = CATEGORIA_POR_ID[p.categoriaId];
         const tinte    = cat?.tinte ?? t.muted;
-        const over     = p.pct >= 100;
-        const restante = p.montoLimite - p.gastado;
+        const over     = p.excedido;
+        const restante = over ? p.exceso : p.restante;
         return (
           <View
             key={p.id}
             style={pg.row}
             accessible
-            accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${over ? 'excedido' : 'restan'} ${fmtGsFull(Math.abs(restante))} guaraníes`}
+            accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${over ? 'excedido por' : 'restan'} ${fmtGsFull(restante)} guaraníes`}
           >
             <View style={[pg.catIco, { backgroundColor: t.accentBg }]}>
               <Icon name={catIcon(cat?.icono ?? '')} size={18} color={tinte} />
@@ -640,7 +640,7 @@ function PresupuestosList({ presupuestos, t }: {
                 <View style={[pg.barFill, { width: `${Math.min(100, p.pct)}%`, backgroundColor: over ? t.negative : tinte }]} />
               </View>
               <Text style={[pg.rest, { color: over ? t.negative : t.ink2 }]}>
-                {over ? `Excedido por Gs ${fmtGs(Math.abs(restante))}` : `Quedan Gs ${fmtGs(restante)}`}
+                {over ? `Excedido por Gs ${fmtGs(restante)}` : `Quedan Gs ${fmtGs(restante)}`}
               </Text>
             </View>
           </View>

@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Modal, ActivityIndicator,
-  KeyboardAvoidingView, Platform, ScrollView,
+  KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import { useThemeCtx } from '@/services/ThemeContext';
 import { colors, colorsDark, borderRadius as br } from '@/theme/design-system';
@@ -220,7 +220,7 @@ export function BackupSection() {
 
       <Modal visible={paso !== null} transparent animationType="fade" onRequestClose={cerrar}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
           <TouchableOpacity style={{ flex: 1 }} onPress={cerrar} activeOpacity={1} />
           <ScrollView

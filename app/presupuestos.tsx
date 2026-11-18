@@ -49,8 +49,8 @@ function DonutChart({ pct, t }: { pct: number; t: typeof colors }) {
 }
 
 function BudgetRow({ p, t, onDelete }: { p: PresupuestoConGasto; t: typeof colors; onDelete: () => void }) {
-  const exceso   = p.pct > 100;
-  const restante = p.montoLimite - p.gastado;
+  const exceso   = p.excedido;
+  const restante = exceso ? p.exceso : p.restante;
   const cat      = CATEGORIAS.find(c => c.id === p.categoriaId);
   const tinte    = cat?.tinte ?? t.muted;
   const barColor = exceso ? t.negative : tinte;
@@ -63,7 +63,7 @@ function BudgetRow({ p, t, onDelete }: { p: PresupuestoConGasto; t: typeof color
       <View
         style={{ flex: 1 }}
         accessible
-        accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${exceso ? 'excedido' : 'restan'} ${Math.abs(restante)} guaraníes`}
+        accessibilityLabel={`${cat?.nombre ?? p.categoriaId}: ${p.pct} por ciento usado, ${exceso ? 'excedido por' : 'restan'} ${restante} guaraníes`}
       >
         <View style={bc.line}>
           <Text style={[bc.catNombre, { color: t.ink }]} numberOfLines={1}>
@@ -77,7 +77,7 @@ function BudgetRow({ p, t, onDelete }: { p: PresupuestoConGasto; t: typeof color
         <View style={bc.line}>
           <Text style={[bc.usado, { color: t.ink2 }]}>Gs {fmtK(p.gastado)} de {fmtK(p.montoLimite)}</Text>
           <Text style={[bc.usado, { color: exceso ? t.negative : t.ink2 }]}>
-            {exceso ? `Excedido Gs ${fmtK(restante)}` : `Quedan Gs ${fmtK(restante)}`}
+            {exceso ? `Excedido por Gs ${fmtK(restante)}` : `Quedan Gs ${fmtK(restante)}`}
           </Text>
         </View>
       </View>
