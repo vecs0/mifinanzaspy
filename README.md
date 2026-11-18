@@ -37,7 +37,7 @@ App Android de **finanzas personales para Paraguay**: gastos, ingresos, presupue
 
 > El APK está firmado con una clave de desarrollo y no pasa por Google Play, por eso Android muestra un aviso al instalarlo.
 
-El APK del Release ya viene conectado al Worker de demo, así que el asesor y el escaneo funcionan con conexión a internet, con un límite de pedidos por minuto. Si compilás la app vos, necesitás tu propio Worker: ver [Proxy de IA](#proxy-de-ia-cloudflare-worker). Sin Worker, la app funciona completa en modo local y el asesor aparece como "no configurado".
+El APK del Release funciona completo en modo local, sin conexión. Las funciones de IA (asesor, escaneo de comprobantes y extractos) vienen desactivadas y el asesor aparece como "no configurado". Para activarlas, compilá la app con tu propio Worker: ver [Proxy de IA](#proxy-de-ia-cloudflare-worker).
 
 ## <img src="docs/icons/funcionalidades.svg" width="22" align="top" alt=""> Funcionalidades
 
