@@ -27,6 +27,10 @@ App Android de **finanzas personales para Paraguay**: gastos, ingresos, presupue
 
 **[Descargar el APK para Android](https://github.com/vecs0/mifinanzaspy/releases/latest)**
 
+<a href="https://github.com/vecs0/mifinanzaspy/releases/download/v1.0.0/MiFinanzasPY-presentacion.mp4"><img src="docs/screenshots/video-portada.webp" alt="Video de presentación de MiFinanzasPY" width="640"></a>
+
+▶ **[Ver el video de presentación](https://github.com/vecs0/mifinanzaspy/releases/download/v1.0.0/MiFinanzasPY-presentacion.mp4)** (1:35, sin audio)
+
 1. Descargá `MiFinanzasPY-v1.0.0-android.apk` desde **Releases** en el teléfono (Android 7 o superior, procesador ARM64).
 2. Abrilo y aceptá **Instalar apps de origen desconocido** si Android lo pide.
 3. Completá el onboarding: nombre, objetivos y bancos que usás.
